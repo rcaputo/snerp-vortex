@@ -110,7 +110,8 @@ use lib qw(./lib);
 ###
 
 my $authors_file    = "/home/troc/projects/authors.txt";
-my $svn_replay_base = "./svn-replay";
+my $svn_replay_base = "../poe-replay";
+my $svn_dump_file   = "../poe-svn.dump";
 
 system("rm -rf $svn_replay_base") and die $!;
 system("mkdir $svn_replay_base") and die $!;
@@ -118,8 +119,12 @@ system("mkdir $svn_replay_base") and die $!;
 ###
 
 my $replayer = SVN::Dump::Narrator->new(
-	svn_dump_filename => "./poe-svn.dump",
+	svn_dump_filename => $svn_dump_file,
 	svn_replay_base   => $svn_replay_base,
 );
 
 $replayer->walk();
+
+###
+
+system("rmdir $svn_replay_base") and die $!;
