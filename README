@@ -1,0 +1,18 @@
+Snerp Vortex is an anagram of SVN Exporter.  It aims to be a faster,
+more reliable way to convert repositories from Subversion to Git than
+using git-svn and various abandonment techniques.
+
+I started this project because the svn-to-git methods I'd read about
+and tried were slow and produced unsatisfying results.
+
+Snerp Vortex replays a Subversion repository dump into a local
+directory, creating a new repository snapshot at each revision.  It
+will then perform some not-Subversion's repository action, such as
+"git commit -a".  The end result is a new repository with the
+significant history of the old one.
+
+"Significant" because some Subversion changes (such as property
+changes) don't map to other systems.
+
+Usage is simple.  At this stage, don't.  It doesn't work.  But it
+should be fairly hackable, if you know Perl and Moose.
