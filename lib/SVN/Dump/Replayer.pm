@@ -137,6 +137,15 @@ sub on_file_copy {
 	my $full_dst_path = $self->qualify_change_path($change);
 	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
 
+	# Weirdly, the copy source may not be authoritative.
+	if (defined $change->content()) {
+		open my $fh, ">", $full_dst_path or die "create $full_dst_path failed: $!";
+		print $fh $change->content();
+		close $fh;
+		return;
+	}
+
+	# If content isn't provided, however, copy the file from the depot.
 	$self->copy_file_or_die($copy_depot_path, $full_dst_path);
 }
 
@@ -326,32 +335,34 @@ sub on_node_copy {
 	}
 
 	# TODO - Complex.  See walk-svn.pl for starters.
-	$self->arborist()->copy_node($from_rev, $from_path, $revision, $path, $kind);
+	$self->arborist()->copy_node(
+		$from_rev, $from_path, $revision, $path, $kind, $data
+	);
 
 	# TODO - Need this?
-	if ($path eq $d_entity->path()) {
-		my $s_entity = $self->arborist()->get_historical_entity(
-			$from_rev, $from_path
-		);
-
-#		print(
-#			"copying to $kind $path (", $s_entity->type(), " ",
-#			$s_entity->name(), ") ... creating ",
-#			$d_entity->type(), " ", $d_entity->name(), "\n"
+#	if ($path eq $d_entity->path()) {
+#		my $s_entity = $self->arborist()->get_historical_entity(
+#			$from_rev, $from_path
 #		);
-
-#		if ($d_entity->type() eq "branch") {
-#			$self->on_branch_creation($s_entity->name(), $d_entity->name());
-#			return;
-#		}
 #
-#		if ($d_entity->type() eq "tag") {
-#			$self->on_tag_creation($s_entity->name(), $d_entity->name());
-#			return;
-#		}
+##		print(
+##			"copying to $kind $path (", $s_entity->type(), " ",
+##			$s_entity->name(), ") ... creating ",
+##			$d_entity->type(), " ", $d_entity->name(), "\n"
+##		);
 #
-#		die $d_entity->debug("unexpected entity: %s");
-	}
+##		if ($d_entity->type() eq "branch") {
+##			$self->on_branch_creation($s_entity->name(), $d_entity->name());
+##			return;
+##		}
+##
+##		if ($d_entity->type() eq "tag") {
+##			$self->on_tag_creation($s_entity->name(), $d_entity->name());
+##			return;
+##		}
+##
+##		die $d_entity->debug("unexpected entity: %s");
+#	}
 
 	undef;
 }

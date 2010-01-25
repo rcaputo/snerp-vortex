@@ -448,7 +448,7 @@ sub delete_node {
 }
 
 sub copy_node {
-	my ($self, $src_rev, $src_path, $revision, $dst_path, $kind) = @_;
+	my ($self, $src_rev, $src_path, $revision, $dst_path, $kind, $data) = @_;
 
 	my $src_node = $self->find_node($src_path, $src_rev);
 	die "copy from $src_path to $dst_path unknown" unless $src_node;
@@ -464,7 +464,7 @@ sub copy_node {
 	my @nodes = ($cloned_branch);
 	while (@nodes) {
 		my $node = shift @nodes;
-		push @nodes, values %{$node->contents()} if $node->can("contents");
+		push @nodes, values %{$node->contents()} if $node->can("content");
 		$node->revision($revision);
 	}
 
@@ -478,6 +478,7 @@ sub copy_node {
 			src_rev       => $src_rev,
 			src_path      => $src_path,
 			src_container => $self->get_historical_entity($src_rev, $src_path),
+			content       => $data,
 		)
 	);
 }
