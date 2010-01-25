@@ -16,3 +16,9 @@ changes) don't map to other systems.
 
 Usage is simple.  At this stage, don't.  It doesn't work.  But it
 should be fairly hackable, if you know Perl and Moose.
+
+Special note for Mac OS X users:  Get yourselves a case-sensitive
+filesystem.  This is easier done than said.  Disk Utility can create
+empty random-access disk images with the filesystems of your choice.
+They mount in /Volumes and are accessible like any other filesystem.
+I'm using a 500MB one for testing.
