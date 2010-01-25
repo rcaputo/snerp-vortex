@@ -133,29 +133,28 @@ sub on_revision_done {
 	my $revision = $self->arborist()->finalize_revision();
 	CHANGE: foreach my $change (@{$revision->changes()}) {
 
+		my $operation = $change->operation();
+
 		# Change is a container.  Perhaps something is tagged or branched?
 		if ($change->is_container()) {
 			my $container_type = $change->container()->type();
-			my $container_name = $change->container()->name();
 
 			if ($container_type eq "branch") {
-				$self->on_branch_creation($change);
+				$operation = "branch_$operation";
 			}
 			elsif ($container_type eq "tag") {
-				$self->on_tag_creation($change);
+				$operation = "tag_$operation";
 			}
 			elsif ($container_type eq "meta") {
-				$self->on_directory_creation($change);
+				# TODO - Do nothing?
 			}
 			else {
 				die "unexpected container type: $container_type";
 			}
-
-			next CHANGE;
 		}
 
 		# Change to a non-container is easy.
-		my $method = $change->callback();
+		my $method = "on_$operation";
 		$self->$method($change);
 	}
 

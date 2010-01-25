@@ -5,6 +5,6 @@ extends 'SVN::Dump::Change';
 
 has content => ( is => 'ro', isa => 'Str', required => 1 );
 
-has '+callback' => ( default => 'on_file_change' );
+has '+operation' => ( default => 'file_change' );
 
 1;

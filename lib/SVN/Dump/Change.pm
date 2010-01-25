@@ -3,7 +3,7 @@ package SVN::Dump::Change;
 use Moose;
 
 has path      => ( is => 'ro', isa => 'Str', required => 1 );
-has callback  => ( is => 'ro', isa => 'Str' );
+has operation => ( is => 'ro', isa => 'Str' );
 
 has container => (
 	is        => 'ro',
