@@ -3,16 +3,13 @@ package SVN::Dump::Arborist;
 # Build and manage repository trees.
 # Find branches and tags based on svn copy operations.
 
-# TODO - Implement this first.  It's definitely needed, and the API
-# will work.  There's some uncertainty among Replayer, and having
-# Arborist may make the use cases clearer.
-
 use Moose;
 extends qw(SVN::Dump::Walker);
 
 use SVN::Dump::Entity;
 use SVN::Dump::Snapshot;
 use SVN::Dump::Revision;
+use SVN::Dump::Copy;
 
 use constant DEBUG => 0;
 use YAML::Syck; # for debugging
@@ -35,9 +32,9 @@ has snapshots => (
 	default => sub { [] },
 );
 
-has copy_source_revisions => (
+has copy_sources => (
 	is      => 'rw',
-	isa     => 'HashRef[Int]',
+	isa     => 'HashRef[HashRef[SVN::Dump::Copy]]',
 	default => sub { {} },
 );
 
@@ -71,12 +68,10 @@ sub on_node_copy {
 	# branches or tags.
 	$self->analyze_new_node($dst_rev, $dst_path, $kind);
 
-	# TODO - A source revision may have multiple destinations.
-	$self->copy_source_revisions()->{$src_rev} = $dst_rev;
-
-	# TODO - Determine whether the copy destination falls in the main
-	# development trunk or a branch.  Store the (path, rev) tuple in
-	# such a way that identify_branch() can use it later.
+	$self->copy_sources()->{$src_rev}{$src_path} = SVN::Dump::Copy->new(
+		src_revision  => $src_rev,
+		src_path      => $src_path,
+	);
 }
 
 # Entities may be deleted.
@@ -168,25 +163,27 @@ sub start_revision {
 	return unless $revision;
 
 	# Clean up obsolete prior revisions.
-	my $copy_source_revisions = $self->copy_source_revisions();
+	my $copy_sources = $self->copy_sources();
 
 	# Remove obsolete referenced revisions.
-	foreach my $src (sort { $a <=> $b } keys %$copy_source_revisions) {
+	foreach my $src (sort { $a <=> $b } keys %$copy_sources) {
 
 		# Copy source is too recent.  We're done.
 		last if $src > $revision - 2;
 
 		# Copy source is used by this or a later rev.  We need it.
-		next if $copy_source_revisions->{$src} >= $revision;
+		next if $copy_sources->{$src} >= $revision;
 
 		# The copy source is now obsolete.
-		delete $copy_source_revisions->{$src};
+		delete $copy_sources->{$src};
 		$snapshots->[$src] = undef;
+
+		# TODO - Delete the copy source from the filesystem?
 	}
 
 	# Previous revision isn't a copy source.
 	# Bump its data up to this revision.
-	unless (exists $copy_source_revisions->{$revision-1}) {
+	unless (exists $copy_sources->{$revision-1}) {
 		$snapshots->[$revision] = $snapshots->[$revision-1];
 		$snapshots->[$revision-1] = undef;
 
@@ -199,7 +196,6 @@ sub start_revision {
 
 	# Previous revision has a copy destination.
 	# Clone it to this one.
-
 	$snapshots->[$revision] = dclone($snapshots->[$revision-1]);
 	$snapshots->[$revision]->revision($revision);
 	$snapshots->[$revision]->author($author);
@@ -235,7 +231,7 @@ sub add_new_node {
 	elsif ($kind eq "file") {
 		$node = SVN::Dump::Snapshot::File->new(
 			revision  => $revision,
-			content   => $content,
+			#content   => $content,
 		);
 		$change = SVN::Dump::Change::Mkfile->new(
 			path      => $path,
@@ -378,11 +374,6 @@ sub get_path_containers {
 sub get_entity {
 	my ($self, $path, $revision) = @_;
 
-	# TODO - Returns at a path.  Should it walk up the three to find its
-	# container's entity if the specific path isn't one?
-	# TODO - Understand the requirements better here!
-
-	# TODO - Last snapshot revision default?
 	$revision = -1 unless defined $revision;
 
 	return unless exists $self->path_to_entities()->{$path};

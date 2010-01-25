@@ -110,9 +110,9 @@ use lib qw(./lib);
 ###
 
 my $authors_file    = "/home/troc/projects/authors.txt";
-my $svn_replay_base = "../poe-replay";
-my $svn_dump_file   = "../poe-svn.dump";
-my $svn_cp_src_dir  = "../poe-copy_sources";
+my $svn_replay_base = "/Volumes/snerp-vortex-workspace/poe-replay";
+my $svn_dump_file   = "/home/troc/projects/git/poe-svn.dump";
+my $svn_cp_src_dir  = "/Volumes/snerp-vortex-workspace/poe-copy-sources";
 
 system("rm -rf $svn_replay_base") and die $!;
 system("mkdir $svn_replay_base") and die $!;
@@ -132,4 +132,5 @@ $replayer->walk();
 
 ###
 
-system("rmdir $svn_replay_base") and die $!;
+# TODO - Clean up after ourselves?
+#system("rmdir $svn_replay_base") and die $!;

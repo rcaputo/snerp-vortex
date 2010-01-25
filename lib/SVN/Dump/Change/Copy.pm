@@ -1,7 +1,5 @@
 package SVN::Dump::Change::Copy;
 
-# TODO - Implement.
-
 use Moose;
 extends 'SVN::Dump::Change';
 
