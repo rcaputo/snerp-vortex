@@ -6,6 +6,10 @@ use Moose;
 extends qw(SVN::Dump::Walker);
 
 use SVN::Dump::Arborist;
+use File::Copy;
+use Cwd;
+use Carp qw(croak);
+use Digest::MD5 qw(md5_hex);
 
 has arborist => (
 	is => 'ro',
@@ -25,97 +29,156 @@ has svn_replay_base => (
 	required  => 1,
 );
 
+has copy_source_depot => (
+	is        => 'ro',
+	isa       => 'Str',
+	required  => 1,
+);
+
 ### High-level tracking.
 
-## ($self, $branch_name)
-sub on_branch_creation {
+sub on_branch_directory_creation {
 	my ($self, $change) = @_;
-	# TODO - Verify the source exists and is a directory.
-	# TODO - Verify the destination doesn't yet exist.
-	# TODO - Verify the destination's parent directory exists and is a dir.
-	# TODO - Copy the source to the destinatin.
+
+	# Branch creation is a higher-order form of directory creation.
+	$self->on_directory_creation($change);
 }
 
-## ($self, $branch_name)
+sub on_branch_directory_copy {
+	my ($self, $change) = @_;
+
+	# Branch creation via directory copy is essentially just a directory
+	# copy with additional implications.
+	$self->on_directory_copy($change);
+}
+
 #sub on_branch_destruction { undef }
-#
-## ($self, $old_branch_name, $new_branch_name)
+
 #sub on_branch_rename { undef }
 
-## ($self, $branch_name, $tag_name)
 sub on_tag_creation {
 	my ($self, $change) = @_;
+
+	# Tag creation is a side effect of directory creation.
+	$self->on_directory_creation($change);
+
 	# TODO - Verify the source exists and is a directory.
 	# TODO - Verify the destination doesn't yet exist.
 	# TODO - Verify the destination's parent directory exists and is a dir.
 	# TODO - Copy the source to the destination.
 }
 
-## ($self, $tag_name)
 #sub on_tag_destruction { undef }
-#
-## ($self, $branch_name, $tag_name)
+
 #sub on_tag_rename { undef }
 
-## ($self, $branch_name, $file_path, $file_content)
 sub on_file_creation {
 	my ($self, $change) = @_;
-	# TODO - Find the absolute file path.
-	# TODO - Create the file.
+
+	my $full_path = $self->qualify_path($change);
+	die "create $full_path failed: file already exists" if -e $full_path;
+
+	open my $fh, ">", $full_path or die "create $full_path failed: $!";
+	print $fh $change->content();
+	close $fh;
 }
 
-## ($self, $branch_name, $file_path, $file_content)
 sub on_file_change {
 	my ($self, $change) = @_;
 	# TODO - Find the absolute file path.
 	# TODO - Update the file.
 }
 
-## ($self, $branch_name, $file_path)
 sub on_file_deletion {
 	my ($self, $change) = @_;
-	# TODO - Find absolute file path.
-	# TODO - Verify that the file exists and is a file.
-	# TODO - Delete the file.
+
+	my $full_path = $self->qualify_path($change);
+	die "delete $full_path failed: file doesn't exist" unless -e $full_path;
+	die "delete $full_path failed: path not to a file" unless -f $full_path;
+
+	unlink $full_path or die "unlink $full_path failed: $!";
 }
 
-## ???
 sub on_file_copy {
 	my ($self, $change) = @_;
-	# TODO - Find absolute source file path.
-	# TODO - Validate that source file exists and is a file.
-	# TODO - Find absolute destination file path.
-	# TODO - Copy the file.  May involve the temporary copy source repot.
+
+	my ($copy_src_descriptor, $copy_src_path) = $self->generate_copy_source(
+		$change
+	);
+
+	unless (-e $copy_src_path) {
+		die "cp source $copy_src_path ($copy_src_descriptor) doesn't exist";
+	}
+
+	my $full_dst_path = $self->qualify_dst_path($change);
+	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
+
+	copy($copy_src_path, $full_dst_path) or die(
+		"cp $copy_src_path $full_dst_path failed: $!"
+	);
 }
 
-## ($self, $branch_name, $old_file_path, $new_file_path)
 #sub on_file_rename { undef }
 
-## ($self, $branch_name, $directory_path)
 sub on_directory_creation {
 	my ($self, $change) = @_;
-	# TODO - Find the absolute directory path.
-	# TODO - Create the directory.
+
+	my $full_path = $self->qualify_path($change);
+	die "mkdir $full_path failed: directory already exists" if -e $full_path;
+
+	mkdir $full_path or die "mkdir $full_path failed: $!";
 }
 
-## ($self, $branch_name, $directory_path)
 sub on_directory_deletion {
 	my ($self, $change) = @_;
+
+	my $full_path = $self->qualify_path($change);
+	die "rmdir $full_path failed: directory doesn't exist" unless -e $full_path;
+	die "rmdir $full_path failed: path not to a directory" unless -d $full_path;
+
+	rmdir $full_path or die "rmdir $full_path failed: $!";
 	# TODO - Find absolute directory path.
 	# TODO - Make sure directory exists and is a directory.
 	# TODO - Remove directory.
 }
 
-## ???
 sub on_directory_copy {
 	my ($self, $change) = @_;
+
+	my ($copy_src_descriptor, $copy_src_path) = $self->generate_copy_source(
+		$change
+	);
+
+	# Directory copy sources are tarballs.
+	$copy_src_path .= ".tar.gz";
+
+	unless (-e $copy_src_path) {
+		die "cp source $copy_src_path ($copy_src_descriptor) doesn't exist";
+	}
+
+	my $full_dst_path = $self->qualify_dst_path($change);
+	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
+
+	# Make the target path.
+	mkdir($full_dst_path) or die "mkdir $full_dst_path failed: $!";
+
+	$self->do_mkdir($full_dst_path);
+	$self->push_dir($full_dst_path);
+	my $cwd = cwd();
+	chdir($full_dst_path) or die "chdir $full_dst_path failed: $!";
+
+	$self->do_or_die("tar", "xzf", $copy_src_path);
+	$self->pop_dir();
+
+	copy($copy_src_path, $full_dst_path) or die(
+		"cp $copy_src_path $full_dst_path failed: $!"
+	);
 	# TODO - Find absolute source directory path.
 	# TODO - Validate source exists and is a directory.
 	# TODO - Find absolute destination directory path.
 	# TODO - Do the copy.  May involve an untar.
 }
 
-## ($self, $branch_name, $old_directory_path, $new_directory_path)
 #sub on_directory_rename { undef }
 
 ### Low-level tracking.
@@ -272,6 +335,64 @@ sub on_node_copy {
 	}
 
 	undef;
+}
+
+### Helper methods.  TODO - Might belong in subclasses.
+
+sub qualify_path {
+	my ($self, $change) = @_;
+
+	my $full_path = $self->svn_replay_base() . "/" . $change->path();
+	$full_path =~ s!//+!/!g;
+
+	return $full_path;
+}
+
+sub generate_copy_source {
+	my ($self, $change) = @_;
+
+	my $copy_source_descriptor = $change->src_path() . " " . $change->src_rev();
+
+	my $full_copy_source = (
+		$self->copy_source_depot() . "/" .
+		md5_hex($copy_source_descriptor)
+	);
+
+	$full_copy_source =~ s!//+!/!g;
+
+	return($copy_source_descriptor, $full_copy_source);
+}
+
+sub do_or_die {
+  my $self = shift;
+  print time() - $^T, " @_\n";
+  system @_ and croak "system(@_) = ", ($? >> 8);
+  return;
+}
+
+sub do_mkdir {
+	my ($self, $directory) = @_;
+	print time() - $^T, " mkdir $directory\n";
+	mkdir $directory or croak "mkdir $directory failed: $!";
+	return;
+}
+
+sub push_dir {
+  my ($self, $new_dir) = @_;
+
+  push @{$self->directory_stack()}, cwd();
+	print time() - $^T, " pushdir $new_dir\n";
+  chdir($new_dir) or croak "chdir $new_dir failed: $!";
+
+  return;
+}
+
+sub pop_dir {
+  my $self = shift;
+  my $old_dir = pop @{$self->directory_stack()};
+  print time() - $^T, " popdir $old_dir\n";
+  chdir($old_dir) or croak "popdir failed: $!";
+  return;
 }
 
 1;
