@@ -48,6 +48,8 @@ sub on_branch_directory_creation {
 	my ($self, $change) = @_;
 
 	# Branch creation is a higher-order form of directory creation.
+	# TODO - Not really.  The two should be implemented separately using
+	# identical directory-creation code underneath.
 	$self->on_directory_creation($change);
 }
 
@@ -56,20 +58,10 @@ sub on_branch_directory_copy {
 
 	# Branch creation via directory copy is essentially just a directory
 	# copy with additional implications.
+	# TODO - Not actually true, since the two have potentially different
+	# consequences depending on which SCM is in use.  Break it down
+	# differently?
 	$self->on_directory_copy($change);
-}
-
-#sub on_branch_destruction { undef }
-
-#sub on_branch_rename { undef }
-
-# TODO - Is this needed?
-sub on_tag_creation {
-	my ($self, $change) = @_;
-die "wtf is going on";
-	# Tag creation is a side effect of certain forms of directory
-	# creation.
-	$self->on_directory_creation($change);
 }
 
 sub on_tag_directory_copy {
@@ -77,17 +69,16 @@ sub on_tag_directory_copy {
 
 	# Tag creation via directory copy is essentially just a directory
 	# copy with additional implications.
+	# TODO - Not actually true, since the two have potentially different
+	# consequences depending on which SCM is in use.  Break it down
+	# differently?
 	$self->on_directory_copy($change);
 }
-
-#sub on_tag_destruction { undef }
-
-#sub on_tag_rename { undef }
 
 sub on_file_creation {
 	my ($self, $change) = @_;
 
-	my $full_path = $self->qualify_change_path($change);
+	my $full_path = $self->qualify_svn_path($change);
 	die "create $full_path failed: file already exists" if -e $full_path;
 
 	$self->log("creating file $full_path");
@@ -100,7 +91,7 @@ sub on_file_creation {
 sub on_file_change {
 	my ($self, $change) = @_;
 
-	my $full_path = $self->qualify_change_path($change);
+	my $full_path = $self->qualify_svn_path($change);
 	die "edit $full_path failed: file doesn't exist" unless -e $full_path;
 	die "edit $full_path failed: path is not a file" unless -f $full_path;
 
@@ -114,7 +105,7 @@ sub on_file_change {
 sub on_file_deletion {
 	my ($self, $change) = @_;
 
-	my $full_path = $self->qualify_change_path($change);
+	my $full_path = $self->qualify_svn_path($change);
 	die "delete $full_path failed: file doesn't exist" unless -e $full_path;
 	die "delete $full_path failed: path not to a file" unless -f $full_path;
 
@@ -134,7 +125,7 @@ sub on_file_copy {
 		die "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
 	}
 
-	my $full_dst_path = $self->qualify_change_path($change);
+	my $full_dst_path = $self->qualify_svn_path($change);
 	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
 
 	# Weirdly, the copy source may not be authoritative.
@@ -149,23 +140,19 @@ sub on_file_copy {
 	$self->copy_file_or_die($copy_depot_path, $full_dst_path);
 }
 
-#sub on_file_rename { undef }
-
 sub on_directory_creation {
 	my ($self, $change) = @_;
 
-	my $full_path = $self->qualify_change_path($change);
+	my $full_path = $self->qualify_svn_path($change);
 	die "mkdir $full_path failed: directory already exists" if -e $full_path;
 
-	$self->log("mkdir $full_path");
-
-	mkdir $full_path or die "mkdir $full_path failed: $!";
+	$self->do_mkdir($full_path);
 }
 
 sub on_directory_deletion {
 	my ($self, $change) = @_;
 
-	my $full_path = $self->qualify_change_path($change);
+	my $full_path = $self->qualify_svn_path($change);
 	die "rmtree $full_path failed: directory doesn't exist" unless -e $full_path;
 	die "rmtree $full_path failed: path not to a directory" unless -d $full_path;
 
@@ -186,7 +173,7 @@ sub on_directory_copy {
 		die "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
 	}
 
-	my $full_dst_path = $self->qualify_change_path($change);
+	my $full_dst_path = $self->qualify_svn_path($change);
 	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
 
 	$self->do_mkdir($full_dst_path);
@@ -194,8 +181,6 @@ sub on_directory_copy {
 	$self->do_or_die("tar", "xzf", $copy_depot_path);
 	$self->pop_dir();
 }
-
-#sub on_directory_rename { undef }
 
 ### Low-level tracking.
 
@@ -283,7 +268,6 @@ sub on_node_add {
 		die "adding $kind $path in unknown entity";
 	}
 
-
 	undef;
 }
 
@@ -369,7 +353,7 @@ sub on_node_copy {
 
 ### Helper methods.  TODO - Might belong in subclasses.
 
-sub qualify_change_path {
+sub qualify_svn_path {
 	my ($self, $change) = @_;
 	return $self->calculate_svn_path($change->path());
 }

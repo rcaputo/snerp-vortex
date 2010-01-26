@@ -4,21 +4,26 @@ use warnings;
 use strict;
 use lib qw(./lib);
 
+use SVN::Dump::Replayer::Git;
+
 my $authors_file    = "/home/troc/projects/authors.txt";
-my $svn_replay_base = "/Volumes/snerp-vortex-workspace/poe-replay";
+my $svn_replay_base = "/Volumes/snerp-vortex-workspace/poe-svn-replay";
 my $svn_dump_file   = "/home/troc/projects/git/poe-svn.dump";
-my $svn_cp_src_dir  = "/Volumes/snerp-vortex-workspace/poe-copy-sources";
+my $svn_cp_src_dir  = "/Volumes/snerp-vortex-workspace/poe-svn-copies";
+my $git_replay_base = "/Volumes/snerp-vortex-workspace/poe-git-replay";
 
-system("rm -rf $svn_replay_base") and die $!;
-system("mkdir $svn_replay_base") and die $!;
-
-system("rm -rf $svn_cp_src_dir") and die $!;
-system("mkdir $svn_cp_src_dir") and die $!;
-
-my $replayer = SVN::Dump::Replayer->new(
+my $replayer = SVN::Dump::Replayer::Git->new(
 	svn_dump_filename => $svn_dump_file,
 	svn_replay_base   => $svn_replay_base,
 	copy_source_depot => $svn_cp_src_dir,
+	git_replay_base   => $git_replay_base,
+	authors_file      => $authors_file,
 );
+
+$replayer->do_rmdir($svn_replay_base) if -e $svn_replay_base;
+$replayer->do_mkdir($svn_replay_base);
+
+$replayer->do_rmdir($svn_cp_src_dir) if -e $svn_cp_src_dir;
+$replayer->do_mkdir($svn_cp_src_dir);
 
 $replayer->walk();
