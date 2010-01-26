@@ -231,7 +231,6 @@ sub add_new_node {
 	elsif ($kind eq "file") {
 		$node = SVN::Dump::Snapshot::File->new(
 			revision  => $revision,
-			#content   => $content,
 		);
 		$change = SVN::Dump::Change::Mkfile->new(
 			path      => $path,
