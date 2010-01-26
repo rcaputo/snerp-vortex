@@ -62,6 +62,8 @@ sub on_walk_done { undef }
 sub walk {
 	my $self = shift;
 
+	$self->on_walk_begin();
+
 	my $record;
 	RECORD: while (
 		$record = (
