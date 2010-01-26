@@ -16,6 +16,7 @@ has id      => ( is => 'ro', isa => 'Int', required => 1 );
 has author  => ( is => 'ro', isa => 'Str', required => 1 );
 has time    => ( is => 'ro', isa => 'Str', required => 1 );
 has message => ( is => 'ro', isa => 'Str', required => 1 );
+has is_open => ( is => 'rw', isa => 'Bool', default => 1 );
 
 has changes => (
 	is      => 'rw',

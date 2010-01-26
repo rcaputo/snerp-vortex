@@ -19,7 +19,6 @@ has svn_dump_filename => (
 has current_revision => (
 	is      => 'rw',
 	isa     => 'Int',
-	default => 0,
 	reader  => 'get_current_revision',
 	writer  => 'set_current_revision',
 );
@@ -79,7 +78,7 @@ sub walk {
 
 		if ($type eq "revision") {
 			$self->on_revision_done($self->get_current_revision()) if (
-				$self->get_current_revision()
+				defined $self->get_current_revision()
 			);
 
 			$self->set_current_revision($header->{'Revision-number'});

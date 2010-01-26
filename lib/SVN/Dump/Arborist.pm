@@ -150,6 +150,10 @@ sub start_revision {
 		root      => SVN::Dump::Snapshot::Dir->new( revision => $revision ),
 	);
 
+	croak "opening an unfinalized revision" if (
+		$self->pending_revision() and $self->pending_revision()->is_open()
+	);
+
 	$self->pending_revision(
 		SVN::Dump::Revision->new(
 			id      => $revision,
@@ -208,7 +212,7 @@ sub finalize_revision {
 	my $self = shift;
 
 	my $new_revision = $self->pending_revision();
-	$self->clear_pending_revision();
+	$new_revision->is_open(0);
 	$new_revision->optimize();
 
 	return $new_revision;
