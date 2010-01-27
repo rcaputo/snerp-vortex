@@ -324,7 +324,7 @@ sub do_mkdir {
 
 sub do_rmdir {
 	my ($self, $directory) = @_;
-	$self->log("mrtree $directory");
+	$self->log("rmtree $directory");
 	rmtree $directory or confess "rmtree $directory failed: $!";
 	return;
 }

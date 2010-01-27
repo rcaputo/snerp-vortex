@@ -167,6 +167,7 @@ after on_tag_directory_copy => sub {
 	open my $fh, "|-", "git tag -a -F - $tag_name" or die $!;
 	print $fh $revision->message();
 	close $fh;
+	$self->pop_dir();
 };
 
 ### Git helpers.
