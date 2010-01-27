@@ -45,52 +45,52 @@ has directory_stack => (
 ### High-level tracking.
 
 sub on_branch_directory_creation {
-	my ($self, $change) = @_;
+	my ($self, $change, $revision) = @_;
 	$self->do_mkdir($self->qualify_svn_path($change));
 }
 
 sub on_branch_directory_copy {
-	my ($self, $change) = @_;
+	my ($self, $change, $revision) = @_;
 	$self->do_directory_copy($change, $self->qualify_svn_path($change));
 }
 
 sub on_tag_directory_copy {
-	my ($self, $change) = @_;
+	my ($self, $change, $revision) = @_;
 	$self->do_directory_copy($change, $self->qualify_svn_path($change));
 }
 
 sub on_file_creation {
-	my ($self, $change) = @_;
+	my ($self, $change, $revision) = @_;
 	$self->write_new_file($change, $self->qualify_svn_path($change));
 }
 
 sub on_file_change {
-	my ($self, $change) = @_;
+	my ($self, $change, $revision) = @_;
 	$self->rewrite_file($change, $self->qualify_svn_path($change));
 }
 
 sub on_file_deletion {
-	my ($self, $change) = @_;
+	my ($self, $change, $revision) = @_;
 	$self->do_file_deletion($self->qualify_svn_path($change));
 }
 
 sub on_file_copy {
-	my ($self, $change) = @_;
+	my ($self, $change, $revision) = @_;
 	$self->do_file_copy($change, $self->qualify_svn_path($change));
 }
 
 sub on_directory_creation {
-	my ($self, $change) = @_;
-	$self->do_mkdir_safely($self->qualify_svn_path($change));
+	my ($self, $change, $revision) = @_;
+	$self->do_mkdir($self->qualify_svn_path($change));
 }
 
 sub on_directory_deletion {
-	my ($self, $change) = @_;
+	my ($self, $change, $revision) = @_;
 	$self->do_rmdir_safely($self->qualify_svn_path($change));
 }
 
 sub on_directory_copy {
-	my ($self, $change) = @_;
+	my ($self, $change, $revision) = @_;
 	$self->do_directory_copy($change, $self->qualify_svn_path($change));
 }
 
@@ -124,7 +124,7 @@ sub on_revision_done {
 
 		# Change to a non-container is easy.
 		my $method = "on_$operation";
-		$self->$method($change);
+		$self->$method($change, $revision);
 	}
 
 	# Changes are done.  Remember any copy sources that pull from this
@@ -308,6 +308,13 @@ sub do_or_die {
   return;
 }
 
+sub do_sans_die {
+  my $self = shift;
+	$self->log("@_");
+  system @_;
+  return;
+}
+
 sub do_mkdir {
 	my ($self, $directory) = @_;
 	$self->log("mkdir $directory");
@@ -440,12 +447,6 @@ sub do_rmdir_safely {
 	die "rmtree $full_path failed: directory doesn't exist" unless -e $full_path;
 	die "rmtree $full_path failed: path not to a directory" unless -d $full_path;
 	$self->do_rmdir($full_path);
-}
-
-sub do_mkdir_safely {
-	my ($self, $full_path) = @_;
-	die "mkdir $full_path failed: path already exists" if -e $full_path;
-	$self->do_mkdir($full_path);
 }
 
 1;
