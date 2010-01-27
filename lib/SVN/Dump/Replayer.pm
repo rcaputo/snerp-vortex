@@ -46,140 +46,52 @@ has directory_stack => (
 
 sub on_branch_directory_creation {
 	my ($self, $change) = @_;
-
-	# Branch creation is a higher-order form of directory creation.
-	# TODO - Not really.  The two should be implemented separately using
-	# identical directory-creation code underneath.
-	$self->on_directory_creation($change);
+	$self->do_mkdir($self->qualify_svn_path($change));
 }
 
 sub on_branch_directory_copy {
 	my ($self, $change) = @_;
-
-	# Branch creation via directory copy is essentially just a directory
-	# copy with additional implications.
-	# TODO - Not actually true, since the two have potentially different
-	# consequences depending on which SCM is in use.  Break it down
-	# differently?
-	$self->on_directory_copy($change);
+	$self->do_directory_copy($change, $self->qualify_svn_path($change));
 }
 
 sub on_tag_directory_copy {
 	my ($self, $change) = @_;
-
-	# Tag creation via directory copy is essentially just a directory
-	# copy with additional implications.
-	# TODO - Not actually true, since the two have potentially different
-	# consequences depending on which SCM is in use.  Break it down
-	# differently?
-	$self->on_directory_copy($change);
+	$self->do_directory_copy($change, $self->qualify_svn_path($change));
 }
 
 sub on_file_creation {
 	my ($self, $change) = @_;
-
-	my $full_path = $self->qualify_svn_path($change);
-	die "create $full_path failed: file already exists" if -e $full_path;
-
-	$self->log("creating file $full_path");
-
-	open my $fh, ">", $full_path or die "create $full_path failed: $!";
-	print $fh $change->content();
-	close $fh;
+	$self->write_new_file($change, $self->qualify_svn_path($change));
 }
 
 sub on_file_change {
 	my ($self, $change) = @_;
-
-	my $full_path = $self->qualify_svn_path($change);
-	die "edit $full_path failed: file doesn't exist" unless -e $full_path;
-	die "edit $full_path failed: path is not a file" unless -f $full_path;
-
-	$self->log("changing file $full_path");
-
-	open my $fh, ">", $full_path or die "create $full_path failed: $!";
-	print $fh $change->content();
-	close $fh;
+	$self->rewrite_file($change, $self->qualify_svn_path($change));
 }
 
 sub on_file_deletion {
 	my ($self, $change) = @_;
-
-	my $full_path = $self->qualify_svn_path($change);
-	die "delete $full_path failed: file doesn't exist" unless -e $full_path;
-	die "delete $full_path failed: path not to a file" unless -f $full_path;
-
-	$self->log("deleting file $full_path");
-
-	unlink $full_path or die "unlink $full_path failed: $!";
+	$self->do_file_deletion($self->qualify_svn_path($change));
 }
 
 sub on_file_copy {
 	my ($self, $change) = @_;
-
-	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
-		$change
-	);
-
-	unless (-e $copy_depot_path) {
-		die "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
-	}
-
-	my $full_dst_path = $self->qualify_svn_path($change);
-	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
-
-	# Weirdly, the copy source may not be authoritative.
-	if (defined $change->content()) {
-		open my $fh, ">", $full_dst_path or die "create $full_dst_path failed: $!";
-		print $fh $change->content();
-		close $fh;
-		return;
-	}
-
-	# If content isn't provided, however, copy the file from the depot.
-	$self->copy_file_or_die($copy_depot_path, $full_dst_path);
+	$self->do_file_copy($change, $self->qualify_svn_path($change));
 }
 
 sub on_directory_creation {
 	my ($self, $change) = @_;
-
-	my $full_path = $self->qualify_svn_path($change);
-	die "mkdir $full_path failed: directory already exists" if -e $full_path;
-
-	$self->do_mkdir($full_path);
+	$self->do_mkdir_safely($self->qualify_svn_path($change));
 }
 
 sub on_directory_deletion {
 	my ($self, $change) = @_;
-
-	my $full_path = $self->qualify_svn_path($change);
-	die "rmtree $full_path failed: directory doesn't exist" unless -e $full_path;
-	die "rmtree $full_path failed: path not to a directory" unless -d $full_path;
-
-	$self->do_rmdir($full_path);
+	$self->do_rmdir_safely($self->qualify_svn_path($change));
 }
 
 sub on_directory_copy {
 	my ($self, $change) = @_;
-
-	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
-		$change
-	);
-
-	# Directory copy sources are tarballs.
-	$copy_depot_path .= ".tar.gz";
-
-	unless (-e $copy_depot_path) {
-		die "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
-	}
-
-	my $full_dst_path = $self->qualify_svn_path($change);
-	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
-
-	$self->do_mkdir($full_dst_path);
-	$self->push_dir($full_dst_path);
-	$self->do_or_die("tar", "xzf", $copy_depot_path);
-	$self->pop_dir();
+	$self->do_directory_copy($change, $self->qualify_svn_path($change));
 }
 
 ### Low-level tracking.
@@ -387,6 +299,8 @@ sub calculate_depot_info {
 	return($copy_depot_descriptor, $full_depot_path);
 }
 
+### Action stuff.
+
 sub do_or_die {
   my $self = shift;
 	$self->log("@_");
@@ -435,6 +349,103 @@ sub copy_file_or_die {
 sub log {
 	my $self = shift;
 	print time() - $^T, " ", join("", @_), "\n";
+}
+
+sub do_directory_copy {
+	my ($self, $change, $full_dst_path) = @_;
+
+	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
+
+	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
+		$change
+	);
+
+	# Directory copy sources are tarballs.
+	$copy_depot_path .= ".tar.gz";
+
+	unless (-e $copy_depot_path) {
+		die "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
+	}
+
+	$self->do_mkdir($full_dst_path);
+	$self->push_dir($full_dst_path);
+	$self->do_or_die("tar", "xzf", $copy_depot_path);
+	$self->pop_dir();
+}
+
+sub rewrite_file {
+	my ($self, $change, $full_path) = @_;
+
+	die "edit $full_path failed: file doesn't exist" unless -e $full_path;
+	die "edit $full_path failed: path is not a file" unless -f $full_path;
+
+	$self->log("changing file $full_path");
+
+	$self->write_change_data($change, $full_path);
+}
+
+sub write_new_file {
+	my ($self, $change, $full_path) = @_;
+
+	die "create $full_path failed: file already exists" if -e $full_path;
+
+	$self->log("creating file $full_path");
+
+	$self->write_change_data($change, $full_path);
+}
+
+sub write_change_data {
+	my ($self, $change, $full_path) = @_;
+	open my $fh, ">", $full_path or die "create $full_path failed: $!";
+	print $fh $change->content();
+	close $fh;
+}
+
+sub do_file_deletion {
+	my ($self, $full_path) = @_;
+
+	die "delete $full_path failed: file doesn't exist" unless -e $full_path;
+	die "delete $full_path failed: path not to a file" unless -f $full_path;
+
+	$self->log("deleting file $full_path");
+
+	unlink $full_path or die "unlink $full_path failed: $!";
+}
+
+sub do_file_copy {
+	my ($self, $change, $full_dst_path) = @_;
+
+	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
+
+	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
+		$change
+	);
+
+	unless (-e $copy_depot_path) {
+		die "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
+	}
+
+	# Weirdly, the copy source may not be authoritative.
+	if (defined $change->content()) {
+		$self->write_change_data($change, $full_dst_path);
+		return;
+	}
+
+	# If content isn't provided, however, copy the file from the depot.
+	$self->copy_file_or_die($copy_depot_path, $full_dst_path);
+}
+
+sub do_rmdir_safely {
+	my ($self, $full_path) = @_;
+	die "rmtree $full_path failed: directory doesn't exist" unless -e $full_path;
+	die "rmtree $full_path failed: path not to a directory" unless -d $full_path;
+	$self->do_rmdir($full_path);
+}
+
+sub do_mkdir_safely {
+	my ($self, $full_path) = @_;
+	die "mkdir $full_path failed: path already exists" if -e $full_path;
+	$self->do_mkdir($full_path);
 }
 
 1;

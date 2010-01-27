@@ -59,83 +59,54 @@ after on_walk_done => sub {
 	undef;
 };
 
-after on_branch_directory_copy => sub {
-	my ($self, $change) = @_;
-	die;
-};
-
 after on_branch_directory_creation => sub {
 	my ($self, $change) = @_;
-	# TODO - What do we do here?
-	die;
+	$self->do_mkdir($self->qualify_git_path($change));
+};
+
+after on_branch_directory_copy => sub {
+	my ($self, $change) = @_;
+	$self->do_directory_copy($change, $self->qualify_git_path($change));
 };
 
 after on_directory_copy => sub {
 	my ($self, $change) = @_;
-	die;
+	$self->do_directory_copy($change, $self->qualify_git_path($change));
 };
 
-# TODO - Refactor directory creation into Replayer.
 after on_directory_creation => sub {
 	my ($self, $change) = @_;
-
-	my $full_path = $self->qualify_git_path($change);
-	die "mkdir $full_path failed: directory already exists" if -e $full_path;
-
-	$self->do_mkdir($full_path);
+	$self->do_mkdir($self->qualify_git_path($change));
 };
 
 after on_directory_deletion => sub {
 	my ($self, $change) = @_;
-	die;
+	$self->do_rmdir_safely($self->qualify_git_path($change));
 };
 
-# TODO - Almost identical to Replayer but with a different base path.
 after on_file_change => sub {
 	my ($self, $change) = @_;
-
-	my $full_path = $self->qualify_git_path($change);
-	die "edit $full_path failed: file doesn't exist" unless -e $full_path;
-	die "edit $full_path failed: path is not a file" unless -f $full_path;
-
-	$self->log("changing file $full_path");
-
-	open my $fh, ">", $full_path or die "create $full_path failed: $!";
-	print $fh $change->content();
-	close $fh;
+	$self->rewrite_file($change, $self->qualify_git_path($change));
 };
 
 after on_file_copy => sub {
 	my ($self, $change) = @_;
-	die;
+	$self->do_file_copy($change, $self->qualify_git_path($change));
 };
 
-# TODO - The act of saving text to a file is identical between svn and
-# git.  Only the base paths change.  Refactor that code into a common
-# Replayer method.
 after on_file_creation => sub {
 	my ($self, $change) = @_;
-
-	my $full_path = $self->qualify_git_path($change);
-	die "create $full_path failed: file already exists" if -e $full_path;
-
-	$self->log("creating file $full_path");
-
-	open my $fh, ">", $full_path or die "create $full_path failed: $!";
-	print $fh $change->content();
-	close $fh;
-
-	# TODO - git add
+	$self->write_new_file($change, $self->qualify_git_path($change));
 };
 
 after on_file_deletion => sub {
 	my ($self, $change) = @_;
-	die;
+	$self->do_file_deletion($self->qualify_git_path($change));
 };
 
 after on_tag_directory_copy => sub {
 	my ($self, $change) = @_;
-	die;
+	$self->do_directory_copy($change, $self->qualify_git_path($change));
 };
 
 ### Helper methods.
