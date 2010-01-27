@@ -386,9 +386,24 @@ sub rewrite_file {
 	die "edit $full_path failed: file doesn't exist" unless -e $full_path;
 	die "edit $full_path failed: path is not a file" unless -f $full_path;
 
-	$self->log("changing file $full_path");
+  # File may not actually be changing.  The subversion change may only
+  # be to properties, which we don't care about here.  Only bother
+	# checking if the file sizes are equal; saves a lot of I/O that way.
 
+	if ((-s $full_path) == do { use bytes; length($change->content()) }) {
+    open my $fh, "<", $full_path or die $!;
+    local $/;
+    my $current_text = <$fh>;
+    if ($current_text eq $change->content()) {
+			$self->log("skipping rewrite - file didn't change");
+			return;
+    }
+  }
+
+	$self->log("changing file $full_path");
 	$self->write_change_data($change, $full_path);
+
+	return 1;
 }
 
 sub write_new_file {

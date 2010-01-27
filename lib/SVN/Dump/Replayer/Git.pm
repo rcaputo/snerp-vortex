@@ -112,8 +112,9 @@ after on_directory_deletion => sub {
 
 after on_file_change => sub {
 	my ($self, $change, $revision) = @_;
-	$self->rewrite_file($change, $self->qualify_git_path($change));
-	$self->files_needing_add()->{$change->path()} = 1;
+	if ($self->rewrite_file($change, $self->qualify_git_path($change))) {
+		$self->files_needing_add()->{$change->path()} = 1;
+	}
 };
 
 after on_file_copy => sub {
