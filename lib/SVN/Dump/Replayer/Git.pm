@@ -99,12 +99,26 @@ after on_directory_creation => sub {
 after on_directory_deletion => sub {
 	my ($self, $change, $revision) = @_;
 
+  # TODO - Doesn't need a commit if $rel_path is a directory that
+  # contains no files.
+  #   1. find $rel_path -type f
+  #   2. If anything comes up, then we need a commit.
+  #   3. Otherwise, we don't need one on account of this.
+
+  # First try git rm, to remove from the repository.
 	$self->push_dir($self->git_replay_base());
 	$self->do_sans_die(
 		"git", "rm", "-r", "--ignore-unmatch", "-f", "--",
 		$change->path(),
 	);
 	$self->pop_dir();
+
+	# Second, try a plain filesystem remove in case the file hasn't yet
+	# been staged.  Since git-rm may have removed any number of parent
+	# directories for $rel_path, we only try to rmtree() if it still
+	# exists.
+	my $full_path = $self->qualify_git_path($change);
+  $self->do_rmdir($full_path) if -e $full_path;
 
 	delete $self->directories_needing_add()->{$change->path()};
 	$self->needs_commit(1);
