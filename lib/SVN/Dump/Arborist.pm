@@ -124,6 +124,7 @@ sub analyze_new_node {
 			name              => $entity_name,
 			exists            => 1,
 			path              => $path,
+			modified          => 0,
 		),
 	);
 
@@ -347,6 +348,7 @@ sub touch_entity {
 	foreach my $entity ($self->get_path_containers($path)) {
 		die unless $entity->exists();
 		$entity->last_revision_id($revision);
+		$entity->modified(1);
 	}
 
 	return;

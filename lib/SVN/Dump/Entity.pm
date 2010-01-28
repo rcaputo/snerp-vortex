@@ -11,6 +11,7 @@ has type              => ( is => 'rw', isa => 'Str', required => 1 );
 has name              => ( is => 'rw', isa => 'Str', required => 1 );
 has exists            => ( is => 'rw', isa => 'Bool', required => 1 );
 has path              => ( is => 'ro', isa => 'Str', required => 1 );
+has modified          => ( is => 'rw', isa => 'Bool', required => 1 );
 
 # Tags that are changed after the fact are really branches.
 # Likewise, branches that haven't been changed may as well be tags.
@@ -21,7 +22,7 @@ sub fix_type {
 	my $type = $self->type();
 
 	if ($type eq "tag") {
-		if ($self->first_revision_id() != $self->last_revision_id()) {
+		if ($self->modified()) {
 			warn "converting ", $self->type(), " ", $self->name, " to branch";
 			$self->type("branch");
 		}
@@ -29,7 +30,7 @@ sub fix_type {
 	}
 
 	if ($type eq "branch") {
-		if ($self->first_revision_id() == $self->last_revision_id()) {
+		unless ($self->modified()) {
 			warn "converting ", $self->type(), " ", $self->name, " to tag";
 			$self->type("tag");
 		}
