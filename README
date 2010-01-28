@@ -22,3 +22,33 @@ filesystem.  This is easier done than said.  Disk Utility can create
 empty random-access disk images with the filesystems of your choice.
 They mount in /Volumes and are accessible like any other filesystem.
 I'm using a 500MB one for testing.
+
+============
+Design Notes
+============
+
+Smerp Vortex doesn't trust Subversion branches yet.  There are
+multiple kinds of branch, some of which don't map to Git's idea of
+branches.  For example, there's the branch that is someone's personal
+scratch workspace.  Then there's the branch intended to be merged back
+later.  Snerp Vortex takes the conservative approach, treating all
+branches as directories for now.  Better heuristics are welcome.
+
+Tags and branches are defined by usage patterns, not by the
+directories in which they live.  A Subversion copy can create either a
+branch or a tag.  Branches are modified after copying, and tags are
+not.  It's quite possible to svn-cp something into /tags and then
+change it.  Snerp Vortex treats that as a branch.  Likewise, one may
+svn-cp something into /branches and then ignore it.  Snerp Vortex
+considers it a tag.
+
+No attempt is made to split spin-off projects from the main project in
+a repository.  In personal experience, spin-off projects are moved
+from /trunk into some new directory, possibly also in trunk.  The
+files are then modified there.  To preserve full history, I intend to
+fork the main Git repository, delete everything but the spin-off, and
+then reorganize the new repository.  Better plans are welcome.
+
+Ideally, Snerp Vortex should remap directories and such on the fly as
+it's replaying a Subversion dump into a Git repository.  For now I'm
+willing to do that by hand afterwards.
