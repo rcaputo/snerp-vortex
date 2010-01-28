@@ -14,8 +14,9 @@ significant history of the old one.
 "Significant" because some Subversion changes (such as property
 changes) don't map to other systems.
 
-Usage is simple.  At this stage, don't.  It doesn't work.  But it
-should be fairly hackable, if you know Perl and Moose.
+Usage is simple.  See "./snerp --help".  However, I wouldn't trust it
+if I were you.  I don't even trust it when I'm me.  Still, it might be
+fun to try it.
 
 Special note for Mac OS X users:  Get yourselves a case-sensitive
 filesystem.  This is easier done than said.  Disk Utility can create
@@ -52,3 +53,8 @@ then reorganize the new repository.  Better plans are welcome.
 Ideally, Snerp Vortex should remap directories and such on the fly as
 it's replaying a Subversion dump into a Git repository.  For now I'm
 willing to do that by hand afterwards.
+
+Subversion can tag subdirectories within trunk.  After all, tags are
+just directory copies.  Git cannot.  Subversion tags are translated to
+Git by tagging HEAD at the relative moment when the Subversion tree
+has been tagged.  Is there a better way to do this?
