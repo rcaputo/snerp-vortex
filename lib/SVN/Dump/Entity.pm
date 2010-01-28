@@ -22,18 +22,12 @@ sub fix_type {
 	my $type = $self->type();
 
 	if ($type eq "tag") {
-		if ($self->modified()) {
-			warn "converting ", $self->type(), " ", $self->name, " to branch";
-			$self->type("branch");
-		}
+		$self->type("branch") if $self->modified();
 		return;
 	}
 
 	if ($type eq "branch") {
-		unless ($self->modified()) {
-			warn "converting ", $self->type(), " ", $self->name, " to tag";
-			$self->type("tag");
-		}
+		$self->type("tag") unless $self->modified();
 		return;
 	}
 

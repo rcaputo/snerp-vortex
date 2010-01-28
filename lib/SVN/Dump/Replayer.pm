@@ -1,6 +1,6 @@
 package SVN::Dump::Replayer;
 
-# Replay a Subversion dump.
+# Replay a Subversion dump.  Must be subclassed with something classy.
 
 use Moose;
 extends qw(SVN::Dump::Walker);
@@ -24,10 +24,13 @@ has arborist => (
 	},
 );
 
-has svn_replay_base => (
+has verbose => ( is => 'ro', isa => 'Bool', default => 0 );
+
+# Replays go somewhere.  Optional because we might replay somewhere
+# dissociated from a filesystem.
+has replay_base => (
 	is        => 'ro',
 	isa       => 'Str',
-	required  => 1,
 );
 
 has copy_source_depot => (
@@ -42,59 +45,14 @@ has directory_stack => (
 	default => sub { [] },
 );
 
-### High-level tracking.
-
-sub on_branch_directory_creation {
-	my ($self, $change, $revision) = @_;
-	$self->do_mkdir($self->qualify_svn_path($change));
-}
-
-sub on_branch_directory_copy {
-	my ($self, $change, $revision) = @_;
-	$self->do_directory_copy($change, $self->qualify_svn_path($change));
-}
-
-sub on_tag_directory_copy {
-	my ($self, $change, $revision) = @_;
-	$self->do_directory_copy($change, $self->qualify_svn_path($change));
-}
-
-sub on_file_creation {
-	my ($self, $change, $revision) = @_;
-	$self->write_new_file($change, $self->qualify_svn_path($change));
-}
-
-sub on_file_change {
-	my ($self, $change, $revision) = @_;
-	$self->rewrite_file($change, $self->qualify_svn_path($change));
-}
-
-sub on_file_deletion {
-	my ($self, $change, $revision) = @_;
-	$self->do_file_deletion($self->qualify_svn_path($change));
-}
-
-sub on_file_copy {
-	my ($self, $change, $revision) = @_;
-	$self->do_file_copy($change, $self->qualify_svn_path($change));
-}
-
-sub on_directory_creation {
-	my ($self, $change, $revision) = @_;
-	$self->do_mkdir($self->qualify_svn_path($change));
-}
-
-sub on_directory_deletion {
-	my ($self, $change, $revision) = @_;
-	$self->do_rmdir_safely($self->qualify_svn_path($change));
-}
-
-sub on_directory_copy {
-	my ($self, $change, $revision) = @_;
-	$self->do_directory_copy($change, $self->qualify_svn_path($change));
-}
-
 ### Low-level tracking.
+
+sub on_walk_begin {
+	my $self = shift;
+
+	$self->do_rmdir($self->copy_source_depot()) if -e $self->copy_source_depot();
+	$self->do_mkdir($self->copy_source_depot());
+}
 
 sub on_revision_done {
 	my ($self, $revision_id) = @_;
@@ -137,7 +95,7 @@ sub on_revision_done {
 			$copy->src_path(), $copy->src_revision()
 		);
 
-		my $copy_src_path = $self->calculate_svn_path($copy->src_path());
+		my $copy_src_path = $self->calculate_path($copy->src_path());
 		die "copy source path $copy_src_path doesn't exist" unless (
 			-e $copy_src_path
 		);
@@ -159,7 +117,7 @@ sub on_revision_done {
 sub on_revision {
 	my ($self, $revision, $author, $date, $log_message) = @_;
 
-	print "r$revision by $author at $date\n";
+	$self->log("r$revision by $author at $date");
 
 	$log_message = "(none)" unless defined($log_message) and length($log_message);
 	chomp $log_message;
@@ -193,21 +151,6 @@ sub on_node_change {
 	}
 
 	$self->arborist()->touch_node($path, $kind, $data);
-
-	# TODO - Do we need the following code?
-#	# Push the pending operation onto the branch.
-#
-#	if ($kind eq "file") {
-#		$self->on_file_change($entity->name(), $path, $data);
-#		return;
-#	}
-#
-#	# Mode changes are ignored.
-#	if ($kind eq "dir") {
-#		return;
-#	}
-
-	#die "$path @ $revision is unexpected kind '$kind'";
 }
 
 sub on_node_delete {
@@ -216,7 +159,7 @@ sub on_node_delete {
 	my $deleted = $self->arborist()->delete_node($path);
 	my $kind = $deleted->{kind};
 
-	# TODO - Push the deletion onto the branch.
+	# TODO - Push the deletion onto the branch?
 
 	undef;
 }
@@ -235,49 +178,10 @@ sub on_node_copy {
 		$from_rev, $from_path, $revision, $path, $kind, $data
 	);
 
-	# TODO - Need this?
-#	if ($path eq $d_entity->path()) {
-#		my $s_entity = $self->arborist()->get_historical_entity(
-#			$from_rev, $from_path
-#		);
-#
-##		print(
-##			"copying to $kind $path (", $s_entity->type(), " ",
-##			$s_entity->name(), ") ... creating ",
-##			$d_entity->type(), " ", $d_entity->name(), "\n"
-##		);
-#
-##		if ($d_entity->type() eq "branch") {
-##			$self->on_branch_creation($s_entity->name(), $d_entity->name());
-##			return;
-##		}
-##
-##		if ($d_entity->type() eq "tag") {
-##			$self->on_tag_creation($s_entity->name(), $d_entity->name());
-##			return;
-##		}
-##
-##		die $d_entity->debug("unexpected entity: %s");
-#	}
-
 	undef;
 }
 
 ### Helper methods.  TODO - Might belong in subclasses.
-
-sub qualify_svn_path {
-	my ($self, $change) = @_;
-	return $self->calculate_svn_path($change->path());
-}
-
-sub calculate_svn_path {
-	my ($self, $path) = @_;
-
-	my $full_path = $self->svn_replay_base() . "/" . $path;
-	$full_path =~ s!//+!/!g;
-
-	return $full_path;
-}
 
 sub get_copy_depot_info {
 	my ($self, $change) = @_;
@@ -355,6 +259,7 @@ sub copy_file_or_die {
 
 sub log {
 	my $self = shift;
+	return unless $self->verbose();
 	print time() - $^T, " ", join("", @_), "\n";
 }
 
@@ -463,5 +368,18 @@ sub do_rmdir_safely {
 	die "rmtree $full_path failed: path not to a directory" unless -d $full_path;
 	$self->do_rmdir($full_path);
 }
+
+### Virtual methods to override.
+
+sub on_branch_directory_creation { undef }
+sub on_branch_directory_copy { undef }
+sub on_tag_directory_copy { undef }
+sub on_directory_copy { undef }
+sub on_directory_creation { undef }
+sub on_directory_deletion { undef }
+sub on_file_change { undef }
+sub on_file_copy { undef }
+sub on_file_creation { undef }
+sub on_file_deletion { undef }
 
 1;

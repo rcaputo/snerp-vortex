@@ -1,0 +1,112 @@
+#!/usr/bin/env perl
+
+use warnings;
+use strict;
+use lib qw(./lib);
+
+use Getopt::Long;
+
+my $replayer_class = "git";
+my ($authors_file, $replay_base, $dump_file_name, $copy_depot_path);
+my $verbose = 0;
+my $help = 0;
+my $agree = 0;
+
+my $getopt_okay = GetOptions(
+	'replayer=s',   \$replayer_class,
+	'authors=s',    \$authors_file,
+	'into=s',       \$replay_base,
+	'dump=s',       \$dump_file_name,
+	'copies=s',     \$copy_depot_path,
+	'verbose',      \$verbose,
+	'help',         \$help,
+	'experimental', \$agree,
+);
+
+if ($help or !$getopt_okay) {
+	die(
+		"$0 usage:\n",
+		"  --replayer=CLASS    how to replay the svn dump file\n",
+		"                         ('git' or 'filesystem' so far)\n",
+		"  --authors=FILENAME  location of git-svn authors file\n",
+		"                         (optional; only for git)\n",
+		"  --dump=FILENAME     location of svn dump file to replay\n",
+		"  --into=PATH         path where the svn dump will be replayed\n",
+		"                         (must not exist)\n",
+		"  --copies=PATH       directory where svn copy files are stored\n",
+		"                         (must not exist)\n",
+		"  --verbose           explain what's happening in great detail\n",
+		"  --help              you're soaking in it.\n",
+		"  --experimental      enable experimental features at one's own risk\n",
+	);
+}
+
+unless (
+	defined($replayer_class) and ($replayer_class =~ /(:?git|filesystem)/i)
+) {
+	die "$0: --replayer=git or --replayer=filesystem required\n";
+}
+
+unless ($agree) {
+	die(
+		"$0:\n",
+		"  This is alpha-quality experimental code.\n",
+		"  Use the --experimental flag to run it at your own risk.\n",
+	);
+}
+
+unless (defined $replay_base and length $replay_base) {
+	die "$0: --into=PATH required\n";
+}
+
+if (-e $replay_base) {
+	die "$0: --into path ($replay_base) must not exist\n";
+}
+
+my $lc_replay = lc($replay_base);
+mkdir $lc_replay or die "$0: cannot create temporary directory at $replay_base: $!\n";
+my $uc_exists = -e uc($replay_base);
+rmdir $lc_replay;
+if ($uc_exists) {
+	die "$0: case sensitive filesystem required for --into path ($replay_base)\n";
+}
+
+if (defined $authors_file) {
+	unless (-f $authors_file) {
+		die "$0: --authors path ($authors_file) must exist if used\n";
+	}
+}
+
+unless (defined $dump_file_name and length $dump_file_name) {
+	die "$0: --dump=FILENAME required\n";
+}
+
+unless (-f $dump_file_name) {
+	die "$0: --dump path ($dump_file_name) must be a file\n";
+}
+
+unless (defined $copy_depot_path and length $copy_depot_path) {
+	die "$0: --copies=PATH required\n";
+}
+
+if (-e $copy_depot_path) {
+	die "$0: --copies path ($copy_depot_path) must not exist\n";
+}
+
+# Convert the replayer class into a Perl class, and load it.
+$replayer_class = "SVN::Dump::Replayer::" .  ucfirst(lc($replayer_class));
+eval "require $replayer_class";
+die if $@;
+$replayer_class->import();
+
+# Begin replaying.
+
+my $replayer = $replayer_class->new(
+	svn_dump_filename => $dump_file_name,
+	replay_base       => $replay_base,
+	copy_source_depot => $copy_depot_path,
+	authors_file      => $authors_file,
+	verbose           => $verbose,
+);
+
+$replayer->walk();
