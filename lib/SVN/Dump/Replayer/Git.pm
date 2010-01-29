@@ -34,6 +34,9 @@ has directories_needing_add => (
 
 has needs_commit => ( is => 'rw', isa => 'Int', default => 0 );
 
+has revisions_between_gc => ( is => 'ro', 'isa' => 'Int', default => 1000 );
+has revisions_until_gc => ( is => 'rw', isa => 'Int', default => 1000 );
+
 ###
 
 after on_revision_done => sub {
@@ -43,19 +46,19 @@ after on_revision_done => sub {
 };
 
 after on_walk_begin => sub {
-  my $self = shift;
+	my $self = shift;
 
 	# Set up authors mapping.
-  if (defined $self->authors_file()) {
-    open my $fh, "<", $self->authors_file() or die $!;
-    while (<$fh>) {
-      my ($nick, $name, $email) = (/(\S+)\s*=\s*(\S[^<]*?)\s*<(\S+?)>/);
-      $self->authors()->{$nick} = SVN::Dump::Replayer::Git::Author->new(
-        name  => $name,
-        email => $email,
-      );
-    }
-  }
+	if (defined $self->authors_file()) {
+		open my $fh, "<", $self->authors_file() or die $!;
+		while (<$fh>) {
+			my ($nick, $name, $email) = (/(\S+)\s*=\s*(\S[^<]*?)\s*<(\S+?)>/);
+			$self->authors()->{$nick} = SVN::Dump::Replayer::Git::Author->new(
+				name  => $name,
+				email => $email,
+			);
+		}
+	}
 
 	$self->do_rmdir($self->replay_base()) if -e $self->replay_base();
 	$self->do_mkdir($self->replay_base());
@@ -91,13 +94,13 @@ after on_directory_creation => sub {
 after on_directory_deletion => sub {
 	my ($self, $change, $revision) = @_;
 
-  # TODO - Doesn't need a commit if $rel_path is a directory that
-  # contains no files.
-  #   1. find $rel_path -type f
-  #   2. If anything comes up, then we need a commit.
-  #   3. Otherwise, we don't need one on account of this.
+	# TODO - Doesn't need a commit if $rel_path is a directory that
+	# contains no files.
+	#   1. find $rel_path -type f
+	#   2. If anything comes up, then we need a commit.
+	#   3. Otherwise, we don't need one on account of this.
 
-  # First try git rm, to remove from the repository.
+	# First try git rm, to remove from the repository.
 	$self->push_dir($self->replay_base());
 	$self->do_sans_die(
 		"git", "rm", "-r", "--ignore-unmatch", "-f", "--",
@@ -110,7 +113,7 @@ after on_directory_deletion => sub {
 	# directories for $rel_path, we only try to rmtree() if it still
 	# exists.
 	my $full_path = $self->qualify_change_path($change);
-  $self->do_rmdir($full_path) if -e $full_path;
+	$self->do_rmdir($full_path) if -e $full_path;
 
 	delete $self->directories_needing_add()->{$change->path()};
 	$self->needs_commit(1);
@@ -162,6 +165,40 @@ after on_tag_directory_copy => sub {
 	$self->pop_dir();
 };
 
+after on_file_rename => sub {
+	my ($self, $change, $revision) = @_;
+	$self->push_dir($self->replay_base());
+	$self->do_or_die("git", "mv", $change->src_path(), $change->path());
+	$self->pop_dir();
+	$self->needs_commit(1);
+};
+
+after on_directory_rename => sub {
+	my ($self, $change, $revision) = @_;
+	$self->push_dir($self->replay_base());
+	$self->do_or_die("git", "mv", $change->src_path(), $change->path());
+	$self->pop_dir();
+	$self->needs_commit(1);
+};
+
+after on_branch_rename => sub {
+	my ($self, $change, $revision) = @_;
+	$self->push_dir($self->replay_base());
+	$self->do_or_die(
+		"git", "branch",
+		$change->src_container()->name(),
+		$change->container()->name(),
+	);
+	$self->pop_dir();
+};
+
+after on_tag_rename => sub {
+	my ($self, $change, $revision) = @_;
+	$self->push_dir($self->replay_base());
+	warn "!!!!! Tag rename isn't implemented yet";
+	$self->pop_dir();
+};
+
 ### Git helpers.
 
 sub git_commit {
@@ -173,50 +210,50 @@ sub git_commit {
 	# Try to avoid "git-add --all".  It traverses the entire project
 	# tree, which quickly gets expensive.
 
-  if (scalar keys %{$self->directories_needing_add()}) {
-    foreach my $dir (keys %{$self->directories_needing_add()}) {
-      # TODO - Use File::Find when shell characters become an issue.
-      foreach my $file (`find $dir -type f`) {
-        chomp $file;
+	if (scalar keys %{$self->directories_needing_add()}) {
+		foreach my $dir (keys %{$self->directories_needing_add()}) {
+			# TODO - Use File::Find when shell characters become an issue.
+			foreach my $file (`find $dir -type f`) {
+				chomp $file;
 				$self->files_needing_add()->{$file} = 1;
-      }
-    }
+			}
+		}
 
 		$self->directories_needing_add({});
-    $self->needs_commit(1);
-  }
+		$self->needs_commit(1);
+	}
 
-  my $needs_status = 1;
-  if (scalar keys %{$self->files_needing_add()}) {
+	my $needs_status = 1;
+	if (scalar keys %{$self->files_needing_add()}) {
 		# TODO - Break it up if the files list is too big.
-    $self->do_or_die("git", "add", "-f", keys(%{$self->files_needing_add()}));
+		$self->do_or_die("git", "add", "-f", keys(%{$self->files_needing_add()}));
 		$self->files_needing_add({});
 		$self->needs_commit(1);
 		$needs_status = 0;
-  }
+	}
 
 	unless ($self->needs_commit()) {
 		$self->log("skipping git commit");
 		$self->pop_dir();
-    return;
-  }
+		return;
+	}
 
 	my $git_commit_message_file = "/tmp/git-commit.txt";
 
-  open my $tmp, ">", $git_commit_message_file or die $!;
-  print $tmp $revision->message() or die $!;
-  close $tmp or die $!;
+	open my $tmp, ">", $git_commit_message_file or die $!;
+	print $tmp $revision->message() or die $!;
+	close $tmp or die $!;
 
-  $ENV{GIT_COMMITTER_DATE} = $ENV{GIT_AUTHOR_DATE} = $revision->time();
+	$ENV{GIT_COMMITTER_DATE} = $ENV{GIT_AUTHOR_DATE} = $revision->time();
 
 	my $rev_author = $revision->author();
-  $ENV{GIT_COMMITTER_NAME} = $ENV{GIT_AUTHOR_NAME} = (
-    $self->authors()->{$rev_author}->name() || "A. U. Thor"
-  );
+	$ENV{GIT_COMMITTER_NAME} = $ENV{GIT_AUTHOR_NAME} = (
+		$self->authors()->{$rev_author}->name() || "A. U. Thor"
+	);
 
-  $ENV{GIT_COMMITTER_EMAIL} = $ENV{GIT_AUTHOR_EMAIL} = (
-    $self->authors()->{$rev_author}->email() || 'author@example.com'
-  );
+	$ENV{GIT_COMMITTER_EMAIL} = $ENV{GIT_AUTHOR_EMAIL} = (
+		$self->authors()->{$rev_author}->email() || 'author@example.com'
+	);
 
 	# Some changes seem to alter no files.  We can detect whether a
 	# commit is needed using git-status.  Otherwise, if we guess wrong,
@@ -225,19 +262,34 @@ sub git_commit {
 
 	# TODO - Status is noisy, and there's no way to -q it.  Can we be
 	# smart enough to avoid git-status altogether?
-  if (!$needs_status or !(system "git", "status")) {
-    $self->do_or_die(
+	if (!$needs_status or !(system "git", "status")) {
+		$self->do_or_die(
 			"git", "commit",
 			($self->verbose() ? () : ("-q")),
 			"-F", $git_commit_message_file
 		);
-  }
+	}
 
 	unlink $git_commit_message_file;
 
 	$self->needs_commit(0);
 	$self->pop_dir();
-  return;
+
+	# Check for the need to GC.
+#	$self->revisions_until_gc( $self->revisions_until_gc() - 1 );
+#	if ($self->revisions_until_gc() < 1) {
+#		$self->do_git_gc();
+#		$self->revisions_until_gc( $self->revisions_between_gc() );
+#	}
+
+	return;
+}
+
+sub do_git_gc {
+	my $self = shift;
+	$self->push_dir($self->replay_base());
+	$self->do_or_die("git", "gc", ($self->verbose() ? () : ("--quiet")));
+	$self->pop_dir();
 }
 
 ### Helper methods.

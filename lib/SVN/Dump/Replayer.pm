@@ -382,4 +382,9 @@ sub on_file_copy { undef }
 sub on_file_creation { undef }
 sub on_file_deletion { undef }
 
+sub on_file_rename { undef }
+sub on_directory_rename { undef }
+sub on_branch_rename { undef }
+sub on_tag_rename { undef }
+
 1;

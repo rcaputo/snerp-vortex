@@ -12,4 +12,5 @@ time ./snerp \
 	--into=$INTO \
 	--dump=/home/troc/projects/git/poe-svn.dump \
 	--copies=$COPIES \
-	--experimental
+	--experimental \
+	--verbose
