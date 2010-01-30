@@ -19,7 +19,8 @@ has arborist => (
 	default => sub {
 		my $self = shift;
 		return SVN::Dump::Arborist->new(
-			svn_dump_filename => $self->svn_dump_filename()
+			svn_dump_filename => $self->svn_dump_filename(),
+			verbose           => $self->verbose(),
 		)->walk();
 	},
 );
@@ -212,11 +213,11 @@ sub do_or_die {
   return;
 }
 
+# Returns true if success.
 sub do_sans_die {
   my $self = shift;
 	$self->log("@_");
-  system @_;
-  return;
+  return !(system @_);
 }
 
 sub do_mkdir {

@@ -11,7 +11,6 @@ use SVN::Dump::Snapshot;
 use SVN::Dump::Revision;
 use SVN::Dump::Copy;
 
-use constant DEBUG => 0;
 use YAML::Syck; # for debugging
 
 use Carp qw(croak);
@@ -44,6 +43,14 @@ has pending_revision => (
 	clearer => 'clear_pending_revision',
 );
 
+has entities_to_fix => (
+	is      => 'rw',
+	isa     => 'ArrayRef[SVN::Dump::Entity]',
+	default => sub { [] },
+);
+
+has verbose => ( is => 'ro', isa => 'Bool', default => 0 );
+
 #######################################
 ### 1st walk: Analyze branch lifespans.
 
@@ -51,7 +58,7 @@ has pending_revision => (
 sub on_node_add {
 	my ($self, $revision, $path, $kind, $data) = @_;
 
-	DEBUG and print "adding $kind $path at $revision\n";
+	$self->log("adding $kind $path at $revision");
 
 	$self->analyze_new_node($revision, $path, $kind);
 }
@@ -60,14 +67,24 @@ sub on_node_add {
 sub on_node_copy {
 	my ($self, $dst_rev, $dst_path, $kind, $src_rev, $src_path, $text) = @_;
 
-	DEBUG and print(
-		"copying $kind $src_path at $src_rev -> $dst_path at $dst_rev\n"
-	);
+	$self->log("copying $kind $src_path at $src_rev -> $dst_path at $dst_rev");
 
 	# Identify file and directory copies, and track whether they create
 	# branches or tags.
-	$self->analyze_new_node($dst_rev, $dst_path, $kind);
+	my $new_entity = $self->analyze_new_node($dst_rev, $dst_path, $kind);
 
+	# If source and destination are entities, then record the copy for
+	# later analysis.
+	my $src_entity = $self->get_entity($src_path, $src_rev);
+	if ($src_entity and $src_entity->type() =~ /^(?:branch|tag)$/) {
+		my $dst_entity = $self->get_entity($dst_path, $dst_rev);
+		if ($dst_entity and $dst_entity->type() =~ /^(?:branch|tag)$/) {
+			$self->log("  entity to entity copy");
+			push @{$src_entity->descendents()}, $dst_entity;
+		}
+	}
+
+	# Recall the copy source for saving later.
 	$self->copy_sources()->{$src_rev}{$src_path} = SVN::Dump::Copy->new(
 		src_revision  => $src_rev,
 		src_path      => $src_path,
@@ -95,7 +112,7 @@ sub on_node_change {
 # At the end of the walk, fix the types of all found entities.
 sub on_walk_done {
 	my $self = shift;
-	$_->fix_type() foreach map { @$_ } values %{$self->path_to_entities()};
+	$_->fix_type() foreach reverse @{$self->entities_to_fix()};
 }
 
 # Determine and remember a path's entity hint.  If the path doesn't
@@ -112,23 +129,25 @@ sub analyze_new_node {
 		return;
 	}
 
-	DEBUG and print "  creates $entity_type $entity_name\n";
+	$self->log("  creates $entity_type $entity_name");
 
-	# Stored in reverse so foreach begins at the end.
-	unshift(
-		@{$self->path_to_entities()->{$path}},
-		SVN::Dump::Entity->new(
-			first_revision_id => $revision,
-			last_revision_id  => $revision,
-			type              => $entity_type,
-			name              => $entity_name,
-			exists            => 1,
-			path              => $path,
-			modified          => 0,
-		),
+	# Copy creates a new entity.
+	my $new_entity = SVN::Dump::Entity->new(
+		first_revision_id => $revision,
+		last_revision_id  => $revision,
+		type              => $entity_type,
+		name              => $entity_name,
+		exists            => 1,
+		path              => $path,
+		modified          => 0,
 	);
 
-	return 1;
+	# Stored in reverse so foreach begins at the end.
+	unshift @{$self->path_to_entities()->{$path}}, $new_entity;
+	push @{$self->entities_to_fix()}, $new_entity;
+
+	# In case it needs to be manipulated further.
+	return $new_entity;
 }
 
 ####################################################
@@ -493,5 +512,11 @@ sub copy_node {
 #	use YAML::Syck; print YAML::Syck::Dump($self->path_to_entities());
 #	exit;
 #}
+
+sub log {
+	my $self = shift;
+	return unless $self->verbose();
+	print time() - $^T, " ", join("", @_), "\n";
+}
 
 1;

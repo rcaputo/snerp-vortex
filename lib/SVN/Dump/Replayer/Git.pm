@@ -168,7 +168,19 @@ after on_tag_directory_copy => sub {
 after on_file_rename => sub {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
-	$self->do_or_die("git", "mv", $change->src_path(), $change->path());
+
+	die "target of file rename (", $change->path(), ") already exists" if (
+		-e $change->path()
+	);
+
+	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
+	rename($change->src_path(), $change->path()) or
+	die(
+		"file rename from ", $change->src_path(),
+		" to ", $change->path(),
+		"failed: $!"
+	);
+
 	$self->pop_dir();
 	$self->needs_commit(1);
 };
@@ -176,7 +188,19 @@ after on_file_rename => sub {
 after on_directory_rename => sub {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
-	$self->do_or_die("git", "mv", $change->src_path(), $change->path());
+
+	die "target of directory rename (", $change->path(), ") already exists" if (
+		-e $change->path()
+	);
+
+	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
+	rename($change->src_path(), $change->path()) or
+	die(
+		"directory rename from ", $change->src_path(),
+		" to ", $change->path(),
+		"failed: $!"
+	);
+
 	$self->pop_dir();
 	$self->needs_commit(1);
 };
@@ -184,18 +208,45 @@ after on_directory_rename => sub {
 after on_branch_rename => sub {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
-	$self->do_or_die(
-		"git", "branch",
-		$change->src_container()->name(),
-		$change->container()->name(),
+
+	die "target of branch rename (", $change->path(), ") already exists" if (
+		-e $change->path()
 	);
+
+	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
+	rename($change->src_path(), $change->path()) or
+	die(
+		"branch rename from ", $change->src_path(),
+		" to ", $change->path(),
+		"failed: $!"
+	);
+
 	$self->pop_dir();
+	$self->needs_commit(1);
+
+	# TODO - Try this when we have actual git branching.  Meanwhile, use
+	# the above git-mv code.
+	#
+	#$self->push_dir($self->replay_base());
+	#$self->do_or_die(
+	#	"git", "branch", "-m",
+	#	$change->src_container()->name(),
+	#	$change->container()->name(),
+	#);
+	#$self->pop_dir();
 };
 
 after on_tag_rename => sub {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
 	warn "!!!!! Tag rename isn't implemented yet";
+
+	# TODO - Something like this?
+	# Get the old tag's reference.
+	# Delete the old tag.
+	# Create the new tag.
+	# (delete before create in the wacky chance that the names match)
+
 	$self->pop_dir();
 };
 
