@@ -5,7 +5,7 @@ package SVN::Dump::Entity;
 use Moose;
 use Carp qw(cluck carp);
 
-use constant DEBUG => 1;
+use constant DEBUG => 0;
 
 has first_revision_id => ( is => 'rw', isa => 'Int', required => 1 );
 has type              => ( is => 'rw', isa => 'Str', required => 1 );
@@ -68,14 +68,14 @@ sub fix_type {
 	if ($type eq "tag") {
 		if ($modified) {
 			$self->type("branch");
-			print "!!!  converting modified entity from tag to branch\n";
+			DEBUG and print "!!!  converting modified entity from tag to branch\n";
 		}
 		return;
 	}
 
 	if ($type eq "branch") {
 		unless ($modified) {
-			print "!!!  converting unmodified entity from branch to tag\n";
+			DEBUG and print "!!!  converting unmodified entity from branch to tag\n";
 			$self->type("tag");
 		}
 		return;
