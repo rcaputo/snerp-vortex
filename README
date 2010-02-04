@@ -14,15 +14,23 @@ significant history of the old one.
 "Significant" because some Subversion changes (such as property
 changes) don't map to other systems.
 
-Usage is simple.  See "./snerp --help".  However, I wouldn't trust it
-if I were you.  I don't even trust it when I'm me.  Still, it might be
-fun to try it.
+Usage is simple.  See "./snerp --help".
+
+I consider this program to be "alpha" quality.  It seems to work in a
+limited test, exporting POE's Subversion repository in about 18
+minutes (2751 revisions).  Unfortunately Snerp Vortex is not properly
+tested yet.  I'm not certain how good the resulting exports are.
+Please give it a try, and let me know how it goes.
 
 Special note for Mac OS X users:  Get yourselves a case-sensitive
 filesystem.  This is easier done than said.  Disk Utility can create
 empty random-access disk images with the filesystems of your choice.
 They mount in /Volumes and are accessible like any other filesystem.
 I'm using a 500MB one for testing.
+
+I have only recently discovered git-fast-import.  I wish I knew about
+it sooner.  Snerp Vortex is flexible enough to use it later, with a
+potentially huge improvement in speed.
 
 ============
 Design Notes
