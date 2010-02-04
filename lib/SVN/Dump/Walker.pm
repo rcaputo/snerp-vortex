@@ -47,6 +47,9 @@ sub on_node_add { undef }
 # ($self, $revision, $path, $kind, $data)
 sub on_node_change { undef }
 
+# ($self, $revision, $path, $kind, $data)
+sub on_node_replace { undef }
+
 # ($self, $revision, $path)
 sub on_node_delete { undef }
 
@@ -112,16 +115,14 @@ sub walk {
 
 		# Add can be plain or involve a copy operation.
 		if ($action eq "add") {
-			my $copy_from_rev  = $header->get('Node-copyfrom-rev');
-			my $copy_from_path = $header->get('Node-copyfrom-path');
-
+			my $copy_from_rev = $header->get('Node-copyfrom-rev');
 			if (defined $copy_from_rev) {
 				$self->on_node_copy(
 					$self->get_current_revision(),
 					$header->get('Node-path'),
 					$header->get('Node-kind'),
 					$copy_from_rev,
-					$copy_from_path,
+					$header->get('Node-copyfrom-path'),
 					($text ? $text->get() : undef),
 				);
 				next RECORD;
@@ -137,7 +138,45 @@ sub walk {
 		}
 
 		if ($action eq "change") {
+			# I have read that "change" may also trigger a copy.
+			my $copy_from_rev = $header->get('Node-copyfrom-rev');
+			if (defined $copy_from_rev) {
+				$self->on_node_copy(
+					$self->get_current_revision(),
+					$header->get('Node-path'),
+					$header->get('Node-kind'),
+					$copy_from_rev,
+					$header->get('Node-copyfrom-path'),
+					($text ? $text->get() : undef),
+				);
+				next RECORD;
+			}
+
 			$self->on_node_change(
+				$self->get_current_revision(),
+				$header->get('Node-path'),
+				$header->get('Node-kind'),
+				($text ? $text->get() : undef),
+			);
+			next RECORD;
+		}
+
+		if ($action eq "replace") {
+			# I have read that "replace" may also trigger a copy.
+			my $copy_from_rev = $header->get('Node-copyfrom-rev');
+			if (defined $copy_from_rev) {
+				$self->on_node_copy(
+					$self->get_current_revision(),
+					$header->get('Node-path'),
+					$header->get('Node-kind'),
+					$copy_from_rev,
+					$header->get('Node-copyfrom-path'),
+					($text ? $text->get() : undef),
+				);
+				next RECORD;
+			}
+
+			$self->on_node_replace(
 				$self->get_current_revision(),
 				$header->get('Node-path'),
 				$header->get('Node-kind'),
