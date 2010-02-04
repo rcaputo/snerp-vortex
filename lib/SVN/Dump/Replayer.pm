@@ -179,6 +179,13 @@ sub on_node_change {
 	$self->arborist()->touch_node($path, $kind, $data);
 }
 
+# I'm led to believe that node-action "replace" is another form of
+# node-action "change".  This method exists as a hook for subclasses
+# to do something different.
+sub on_node_replace {
+	goto &on_node_change;
+}
+
 sub on_node_delete {
 	my ($self, $revision, $path) = @_;
 
