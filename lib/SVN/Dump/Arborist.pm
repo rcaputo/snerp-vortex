@@ -22,7 +22,20 @@ use Storable qw(dclone);
 has path_to_entities => (
 	is => 'rw',
 	isa => 'HashRef[ArrayRef[SVN::Dump::Entity]]',
-	default => sub { {} },
+	default => sub {
+		{
+			"" => [
+				SVN::Dump::Entity->new(
+					first_revision_id => 0,
+					type              => "meta",
+					name              => "root",
+					exists            => 1,
+					path              => "",
+					modified          => 0,
+				),
+			],
+		},
+	},
 );
 
 has snapshots => (
@@ -464,7 +477,7 @@ sub get_entity {
 sub get_historical_entity {
 	my ($self, $revision, $path) = @_;
 
-	my @path = split /\/+/, $path;
+	my @path = ("", (split /\/+/, $path));
 	while (@path) {
 		my $test_path = join("/", @path);
 		next unless exists $self->path_to_entities()->{$test_path};
