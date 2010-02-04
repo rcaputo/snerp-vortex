@@ -21,6 +21,7 @@ package SVN::Dump::Replayer::Git;
 use Moose;
 extends 'SVN::Dump::Replayer';
 use Carp qw(croak);
+use File::Path qw(mkpath);
 
 has authors_file    => ( is => 'ro', isa => 'Str' );
 has authors => (
@@ -124,6 +125,8 @@ sub on_directory_deletion {
 		"git", "rm", "-r", "--ignore-unmatch", "-f", "--",
 		$change->path(),
 	);
+
+	$self->ensure_parent_dir_exists($change->path());
 	$self->pop_dir();
 
 	# Second, try a plain filesystem remove in case the file hasn't yet
@@ -132,6 +135,7 @@ sub on_directory_deletion {
 	# exists.
 	my $full_path = $self->qualify_change_path($change);
 	$self->do_rmdir($full_path) if -e $full_path;
+	$self->ensure_parent_dir_exists($full_path);
 
 	delete $self->directories_needing_add()->{$change->path()};
 	$self->needs_commit(1);
@@ -163,6 +167,8 @@ sub on_branch_directory_deletion {
 	# exists.
 	my $full_path = $self->qualify_change_path($change);
 	$self->do_rmdir($full_path) if -e $full_path;
+
+	$self->ensure_parent_dir_exists($full_path);
 
 	delete $self->directories_needing_add()->{$change->path()};
 	$self->needs_commit(1);
@@ -202,6 +208,8 @@ sub on_file_deletion {
 		"git", "rm", "-r", "--ignore-unmatch", "-f", "--",
 		$change->path(),
 	);
+
+	$self->ensure_parent_dir_exists($change->path());
 	$self->pop_dir();
 
 	delete $self->files_needing_add()->{$change->path()};
@@ -221,7 +229,7 @@ sub on_tag_directory_copy {
 	$self->pipe_into_or_die($revision->message(), "git tag -a -F - $tag_name");
 	$self->pop_dir();
 
-	DEBUG and $self->log("TAG) setting tag $tag_name");
+	$self->log("TAG) setting tag $tag_name");
 	$self->tags()->{$tag_name} = $revision;
 }
 
@@ -234,7 +242,7 @@ sub on_tag_directory_deletion {
 	$self->do_or_die("git", "tag", "-d", $change->container()->name());
 	$self->pop_dir();
 
-	DEBUG and $self->log("??? deleting tag ", $change->container()->name());
+	$self->log("TAG) deleting tag ", $change->container()->name());
 	delete $self->tags()->{$change->container()->name()};
 }
 
@@ -256,6 +264,7 @@ sub on_file_rename {
 		"failed: $!"
 	);
 
+	$self->ensure_parent_dir_exists($change->src_path());
 	$self->pop_dir();
 	$self->needs_commit(1);
 }
@@ -276,6 +285,7 @@ sub on_directory_rename {
 		"failed: $!"
 	);
 
+	$self->ensure_parent_dir_exists($change->src_path());
 	$self->pop_dir();
 	$self->needs_commit(1);
 }
@@ -298,6 +308,7 @@ sub on_branch_rename {
 		"failed: $!"
 	);
 
+	$self->ensure_parent_dir_exists($change->src_path());
 	$self->pop_dir();
 	$self->needs_commit(1);
 
@@ -329,7 +340,7 @@ sub on_tag_rename {
 	chomp $old_tag_ref;
 
 	# Get the old revision, so we can reuse its message.
-	DEBUG and $self->log("TAG) renaming from tag $old_tag_name");
+	$self->log("TAG) renaming from tag $old_tag_name");
 	my $old_revision = delete $self->tags()->{$old_tag_name};
 
 	# Create the new tag with the old reference.
@@ -345,7 +356,7 @@ sub on_tag_rename {
 
 	$self->pop_dir();
 
-	DEBUG and $self->log("??? renaming to tag $new_tag_name");
+	$self->log("TAG) renaming to tag $new_tag_name");
 	$self->tags()->{$new_tag_name} = $old_revision;
 }
 
@@ -456,7 +467,9 @@ sub calculate_path {
 
 sub git_env_setup {
 	my ($self, $revision) = @_;
-croak "bad revision" unless defined $revision;
+
+	croak "bad revision" unless defined $revision;
+
 	$ENV{GIT_COMMITTER_DATE} = $ENV{GIT_AUTHOR_DATE} = $revision->time();
 
 	my $rev_author = $revision->author();
@@ -467,6 +480,15 @@ croak "bad revision" unless defined $revision;
 	$ENV{GIT_COMMITTER_EMAIL} = $ENV{GIT_AUTHOR_EMAIL} = (
 		$self->authors()->{$rev_author}->email() || 'author@example.com'
 	);
+}
+
+sub ensure_parent_dir_exists {
+	my ($self, $path) = @_;
+	$path =~ s!/[^/]+/?$!!;
+	return unless length $path and $path ne "/";
+	return if -e $path;
+	$self->log("mkpath $path");
+	mkpath($path) or die "mkpath failed: $!";
 }
 
 1;
