@@ -88,7 +88,6 @@ sub on_node_copy {
 
 	# Recall the copy source, in case we need to take a source snapshot
 	# during replay.
-	# TODO - Must recall src_rev,src_path,dst_rev,dst_path
 	push(
 		@{$self->copy_sources()->{$src_rev}{$src_path}},
 		SVN::Dump::Copy->new(
@@ -248,8 +247,9 @@ sub start_revision {
 			# And the snapshot at that revision is also obsolete.
 			$snapshots->[$src] = undef;
 
-			# And the copy source file is also obsolete.
-			# TODO
+			# TODO - Remove the copy source from the depot.  However, this
+			# is a Replayer thing, not an Arborist one.  The division of
+			# responsibility needs to be clarified here.
 		}
 	}
 
