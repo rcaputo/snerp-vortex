@@ -269,6 +269,29 @@ sub on_file_rename {
 	$self->needs_commit(1);
 }
 
+sub on_rename {
+	my ($self, $change, $revision) = @_;
+	$self->push_dir($self->replay_base());
+
+	die "target of rename (", $change->path(), ") already exists" if (
+		-e $change->path()
+	);
+
+	$self->git_env_setup($revision);
+
+	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
+	rename($change->src_path(), $change->path()) or
+	die(
+		"rename from ", $change->src_path(),
+		" to ", $change->path(),
+		"failed: $!"
+	);
+
+	$self->ensure_parent_dir_exists($change->src_path());
+	$self->pop_dir();
+	$self->needs_commit(1);
+}
+
 sub on_directory_rename {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
