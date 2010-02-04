@@ -5,55 +5,75 @@ extends 'SVN::Dump::Replayer';
 
 ### Map high-level operations to a filesystem.
 
-after on_branch_directory_creation => sub {
+sub on_branch_directory_creation {
 	my ($self, $change, $revision) = @_;
 	$self->do_mkdir($self->qualify_change_path($change));
-};
+}
 
-after on_branch_directory_copy => sub {
+sub on_branch_directory_copy {
 	my ($self, $change, $revision) = @_;
 	$self->do_directory_copy($change, $self->qualify_change_path($change));
-};
+}
 
-after on_tag_directory_copy => sub {
+sub on_tag_directory_copy {
 	my ($self, $change, $revision) = @_;
 	$self->do_directory_copy($change, $self->qualify_change_path($change));
-};
+}
 
-after on_file_creation => sub {
+sub on_file_creation {
 	my ($self, $change, $revision) = @_;
 	$self->write_new_file($change, $self->qualify_change_path($change));
-};
+}
 
-after on_file_change => sub {
+sub on_file_change {
 	my ($self, $change, $revision) = @_;
 	$self->rewrite_file($change, $self->qualify_change_path($change));
-};
+}
 
-after on_file_deletion => sub {
+sub on_file_deletion {
 	my ($self, $change, $revision) = @_;
 	$self->do_file_deletion($self->qualify_change_path($change));
-};
+}
 
-after on_file_copy => sub {
+sub on_file_copy {
 	my ($self, $change, $revision) = @_;
 	$self->do_file_copy($change, $self->qualify_change_path($change));
-};
+}
 
-after on_directory_creation => sub {
+sub on_directory_creation {
 	my ($self, $change, $revision) = @_;
 	$self->do_mkdir($self->qualify_change_path($change));
-};
+}
 
-after on_directory_deletion => sub {
+sub on_directory_deletion {
 	my ($self, $change, $revision) = @_;
 	$self->do_rmdir_safely($self->qualify_change_path($change));
-};
+}
 
-after on_directory_copy => sub {
+sub on_branch_directory_deletion {
+	my ($self, $change, $revision) = @_;
+	$self->do_rmdir_safely($self->qualify_change_path($change));
+}
+
+sub on_tag_directory_deletion {
+	my ($self, $change, $revision) = @_;
+	$self->do_rmdir_safely($self->qualify_change_path($change));
+}
+
+sub on_directory_copy {
 	my ($self, $change, $revision) = @_;
 	$self->do_directory_copy($change, $self->qualify_change_path($change));
-};
+}
+
+sub on_rename {
+	my ($self, $change, $revision) = @_;
+	$self->do_rename($change);
+}
+
+sub on_tag_rename {
+	my ($self, $change, $revision) = @_;
+	$self->do_rename($change);
+}
 
 ### Mid-level tracking.
 

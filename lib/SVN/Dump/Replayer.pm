@@ -63,6 +63,14 @@ sub on_revision_done {
 
 		my $operation = $change->operation();
 
+		$self->log("REP) $operation ", $change->path());
+		$self->log(
+			"REP) ", ($change->is_container() ? "is" : "is not"), " container"
+		);
+		$self->log(
+			$change->container()->type(), " ", $change->container()->name()
+		);
+
 		# Change is a container.  Perhaps something is tagged or branched?
 		if ($change->is_container()) {
 			my $container_type = $change->container()->type();
@@ -83,6 +91,7 @@ sub on_revision_done {
 
 		# Change to a non-container is easy.
 		my $method = "on_$operation";
+		$self->log("REP) calling method $method");
 		$self->$method($change, $revision);
 	}
 
@@ -90,6 +99,7 @@ sub on_revision_done {
 	# revision.
 
 	COPY: foreach my $copy (
+		map { @$_ }
 		values %{$self->arborist()->copy_sources()->{$revision_id} || {}}
 	) {
 		my ($copy_depot_descriptor, $copy_depot_path) = $self->calculate_depot_info(
@@ -97,6 +107,21 @@ sub on_revision_done {
 		);
 
 		my $copy_src_path = $self->calculate_path($copy->src_path());
+
+		# Tags don't necessarily exist.
+		# TODO - However, this is a per-SCM behavior, so the decision
+		# belongs in a per-SCM subclass.
+		# TODO - Arborist::on_walk_done might be able to remove defunct
+		# copy sources so they never appear here.
+		my $src_entity = $self->arborist()->get_entity(
+			$copy->src_path(), $revision_id,
+		);
+
+		$self->log("CPY) Copy from entity $src_entity");
+		$self->log("CPY) Copy from type ", $src_entity->type()) if $src_entity;
+
+		next COPY if $src_entity and $src_entity->type() eq "tag";
+
 		die "copy source path $copy_src_path doesn't exist" unless (
 			-e $copy_src_path
 		);
@@ -157,7 +182,7 @@ sub on_node_change {
 sub on_node_delete {
 	my ($self, $revision, $path) = @_;
 
-	my $deleted = $self->arborist()->delete_node($path);
+	my $deleted = $self->arborist()->delete_node($path, $revision);
 	my $kind = $deleted->{kind};
 
 	# TODO - Push the deletion onto the branch?
@@ -211,6 +236,25 @@ sub do_or_die {
 	$self->log("@_");
   system @_ and confess "system(@_) = ", ($? >> 8);
   return;
+}
+
+sub pipe_into_or_die {
+	my ($self, $data, $cmd) = @_;
+	$self->log($cmd);
+	open my $fh, "|-", $cmd or die $!;
+	print $fh $data;
+	close $fh;
+	return;
+}
+
+sub pipe_out_of_or_die {
+	my ($self, $cmd) = @_;
+	$self->log($cmd);
+	open my $fh, "-|", $cmd or die $!;
+	local $/;
+	my $data = <$fh>;
+	close $fh;
+	return $data;
 }
 
 # Returns true if success.
@@ -370,22 +414,39 @@ sub do_rmdir_safely {
 	$self->do_rmdir($full_path);
 }
 
+sub do_rename {
+	my ($self, $change) = @_;
+
+	my $full_src_path = $self->calculate_path($change->src_path());
+	my $full_dst_path = $self->calculate_path($change->path());
+
+	rename $full_src_path, $full_dst_path or die(
+		"rename $full_src_path $full_dst_path failed: $!"
+	);
+}
+
 ### Virtual methods to override.
 
-sub on_branch_directory_creation { undef }
-sub on_branch_directory_copy { undef }
-sub on_tag_directory_copy { undef }
-sub on_directory_copy { undef }
-sub on_directory_creation { undef }
-sub on_directory_deletion { undef }
-sub on_file_change { undef }
-sub on_file_copy { undef }
-sub on_file_creation { undef }
-sub on_file_deletion { undef }
+sub on_branch_directory_copy { confess "must override method"; }
+sub on_branch_directory_creation { confess "must override method"; }
+sub on_branch_directory_deletion { confess "must override method"; }
+sub on_branch_rename { confess "must override method"; }
 
-sub on_file_rename { undef }
-sub on_directory_rename { undef }
-sub on_branch_rename { undef }
-sub on_tag_rename { undef }
+sub on_directory_copy { confess "must override method"; }
+sub on_directory_creation { confess "must override method"; }
+sub on_directory_deletion { confess "must override method"; }
+sub on_directory_rename { confess "must override method"; }
+
+sub on_file_change { confess "must override method"; }
+sub on_file_copy { confess "must override method"; }
+sub on_file_creation { confess "must override method"; }
+sub on_file_deletion { confess "must override method"; }
+sub on_file_rename { confess "must override method"; }
+
+sub on_tag_directory_copy { confess "must override method"; }
+sub on_tag_directory_deletion { confess "must override method"; }
+sub on_tag_rename { confess "must override method"; }
+
+sub on_rename { confess "must override method"; }
 
 1;

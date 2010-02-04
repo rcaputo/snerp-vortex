@@ -33,7 +33,7 @@ has snapshots => (
 
 has copy_sources => (
 	is      => 'rw',
-	isa     => 'HashRef[HashRef[SVN::Dump::Copy]]',
+	isa     => 'HashRef[HashRef[ArrayRef[SVN::Dump::Copy]]]',
 	default => sub { {} },
 );
 
@@ -54,15 +54,16 @@ has verbose => ( is => 'ro', isa => 'Bool', default => 0 );
 #######################################
 ### 1st walk: Analyze branch lifespans.
 
-# New nodes may be entities.
+# Analyze new nodes at the times they are added.  Determine whether
+# they're entities, and keep track of them if they are
 sub on_node_add {
 	my ($self, $revision, $path, $kind, $data) = @_;
-
 	$self->log("adding $kind $path at $revision");
-
 	$self->analyze_new_node($revision, $path, $kind);
 }
 
+# Copy destinations may be entities.  Analyze them as they are created
+# by copies.  Also remember the details about 
 # Copy destinations may be entities.
 sub on_node_copy {
 	my ($self, $dst_rev, $dst_path, $kind, $src_rev, $src_path, $text) = @_;
@@ -79,15 +80,23 @@ sub on_node_copy {
 	if ($src_entity and $src_entity->type() =~ /^(?:branch|tag)$/) {
 		my $dst_entity = $self->get_entity($dst_path, $dst_rev);
 		if ($dst_entity and $dst_entity->type() =~ /^(?:branch|tag)$/) {
+			die unless $dst_entity == $new_entity;
 			$self->log("  entity to entity copy");
 			push @{$src_entity->descendents()}, $dst_entity;
 		}
 	}
 
-	# Recall the copy source for saving later.
-	$self->copy_sources()->{$src_rev}{$src_path} = SVN::Dump::Copy->new(
-		src_revision  => $src_rev,
-		src_path      => $src_path,
+	# Recall the copy source, in case we need to take a source snapshot
+	# during replay.
+	# TODO - Must recall src_rev,src_path,dst_rev,dst_path
+	push(
+		@{$self->copy_sources()->{$src_rev}{$src_path}},
+		SVN::Dump::Copy->new(
+			src_revision  => $src_rev,
+			src_path      => $src_path,
+			dst_revision  => $dst_rev,
+			dst_path      => $dst_path,
+		)
 	);
 }
 
@@ -95,7 +104,15 @@ sub on_node_copy {
 sub on_node_delete {
 	my ($self, $revision, $path) = @_;
 
-	$self->touch_entity($revision, $path);
+	# Deleting an entity touches its containers and itself.  Its
+	# containers are modified, but itself isn't.
+	foreach my $entity ($self->get_path_containers($path)) {
+		die unless $entity->exists();
+		next if $entity->path() eq $path;
+		$entity->modified(1);
+	}
+
+	# The deleted entity doesn't exist.
 	my $entity = $self->get_entity($path);
 	$entity->exists(0) if $entity;
 
@@ -112,7 +129,11 @@ sub on_node_change {
 # At the end of the walk, fix the types of all found entities.
 sub on_walk_done {
 	my $self = shift;
-	$_->fix_type() foreach reverse @{$self->entities_to_fix()};
+	$_->fix_type() foreach @{$self->entities_to_fix()};
+
+	# Different SCMs may need to perform specific activities at this
+	# time.  They can achieve the same timing by adding specific logic
+	# to their "after on_walk_begin" methods.
 }
 
 # Determine and remember a path's entity hint.  If the path doesn't
@@ -124,17 +145,18 @@ sub analyze_new_node {
 
 	my ($entity_type, $entity_name) = $self->calculate_entity($kind, $path);
 
+	# Adding a plain file or directory to an entity touches that entity,
+	# and all the entities it contains.
 	if ($entity_type =~ /^(?:file|dir)$/) {
 		$self->touch_entity($revision, $path);
 		return;
 	}
 
-	$self->log("  creates $entity_type $entity_name");
+	$self->log("  creates $entity_type $entity_name at $revision");
 
 	# Copy creates a new entity.
 	my $new_entity = SVN::Dump::Entity->new(
 		first_revision_id => $revision,
-		last_revision_id  => $revision,
 		type              => $entity_type,
 		name              => $entity_name,
 		exists            => 1,
@@ -142,16 +164,15 @@ sub analyze_new_node {
 		modified          => 0,
 	);
 
-	# Stored in reverse so foreach begins at the end.
-	unshift @{$self->path_to_entities()->{$path}}, $new_entity;
+	push @{$self->path_to_entities()->{$path}}, $new_entity;
 	push @{$self->entities_to_fix()}, $new_entity;
 
 	# In case it needs to be manipulated further.
 	return $new_entity;
 }
 
-####################################################
-### 2nd walk: Track current state of the repository.
+##########################################################
+### Track current state of the repository during Replayer.
 
 sub start_revision {
 	my ($self, $revision, $author, $time, $log_message) = @_;
@@ -160,15 +181,6 @@ sub start_revision {
 	my $snapshots = $self->snapshots();
 	my $next_revision = @$snapshots;
 	croak "expecting revision $next_revision" unless $revision == $next_revision;
-
-	# Record a new snapshot.
-	push @$snapshots, SVN::Dump::Snapshot->new(
-		revision  => $revision,
-		author    => $author,
-		time      => $time,
-		message   => $log_message,
-		root      => SVN::Dump::Snapshot::Dir->new( revision => $revision ),
-	);
 
 	croak "opening an unfinalized revision" if (
 		$self->pending_revision() and $self->pending_revision()->is_open()
@@ -184,7 +196,19 @@ sub start_revision {
 	);
 
 	# Revision zero?  No prior revision to worry about.
-	return unless $revision;
+	unless ($revision) {
+		# Record a new snapshot.
+		push @$snapshots, SVN::Dump::Snapshot->new(
+			revision  => $revision,
+			author    => $author,
+			time      => $time,
+			message   => $log_message,
+			root      => SVN::Dump::Snapshot::Dir->new( revision => $revision ),
+		);
+
+		$self->log("SNP) added snapshot at $next_revision");
+		return;
+	}
 
 	# Clean up obsolete prior revisions.
 	my $copy_sources = $self->copy_sources();
@@ -192,22 +216,48 @@ sub start_revision {
 	# Remove obsolete referenced revisions.
 	foreach my $src (sort { $a <=> $b } keys %$copy_sources) {
 
-		# Copy source is too recent.  We're done.
+		# No need to continue beyond recent history.
 		last if $src > $revision - 2;
 
-		# Copy source is used by this or a later rev.  We need it.
-		next if $copy_sources->{$src} >= $revision;
+		# Discard any copy destinations that are before now.
+		while (my ($src_path, $copies) = each %{$copy_sources->{$src}}) {
 
-		# The copy source is now obsolete.
-		delete $copy_sources->{$src};
-		$snapshots->[$src] = undef;
+			my $i = @$copies;
+			while ($i--) {
+				# Copy goes to a present or future revision.  Keep it.
+				next if $copies->[$i]->dst_revision() >= $revision;
 
-		# TODO - Delete the copy source from the filesystem?
+				# Copy goes to a previous revision.  We can remove it.
+				splice @$copies, $i, 1;
+			}
+
+			# If we've removed all copies for the source revision and path,
+			# then remove the source path.
+			unless (@$copies) {
+				$self->log("CPY) copy sources for $src $src_path are all gone");
+				delete $copy_sources->{$src}->{$src_path};
+			}
+		}
+
+		# All copies are gone for the source revision?  We can get rid of
+		# that, too.
+		unless (scalar keys %{$copy_sources->{$src}}) {
+			delete $copy_sources->{$src};
+			$self->log("SNP) clearing snapshot at revision $src");
+
+			# And the snapshot at that revision is also obsolete.
+			$snapshots->[$src] = undef;
+
+			# And the copy source file is also obsolete.
+			# TODO
+		}
 	}
 
 	# Previous revision isn't a copy source.
 	# Bump its data up to this revision.
 	unless (exists $copy_sources->{$revision-1}) {
+		$self->log("SNP) bumping snapshot from previous revision to $revision");
+
 		$snapshots->[$revision] = $snapshots->[$revision-1];
 		$snapshots->[$revision-1] = undef;
 
@@ -220,6 +270,7 @@ sub start_revision {
 
 	# Previous revision has a copy destination.
 	# Clone it to this one.
+	$self->log("REV) cloning previous revision to $revision");
 	$snapshots->[$revision] = dclone($snapshots->[$revision-1]);
 	$snapshots->[$revision]->revision($revision);
 	$snapshots->[$revision]->author($author);
@@ -294,7 +345,11 @@ sub add_node {
 sub find_node {
 	my ($self, $path, $rev) = @_;
 
-	my $node = $self->snapshots()->[$rev || -1]->root();
+	$rev = -1 unless defined $rev;
+croak "no node for snapshot revision $rev" unless (
+	$self->snapshots()->[$rev]
+);
+	my $node = $self->snapshots()->[$rev]->root();
 
 	my @path = split /\//, $path;
 	foreach (@path) {
@@ -356,17 +411,11 @@ sub calculate_entity {
 	return("dir", $path);
 }
 
-# Register that an entity has been modified at a particular revision.
-# We assume that modifications occur in monotonically increasing time,
-# so we only touch the last entity registered at the path.  If this
-# assumption is false SVN::Dump::Entity will need a touch() method.
-
 sub touch_entity {
 	my ($self, $revision, $path) = @_;
 
 	foreach my $entity ($self->get_path_containers($path)) {
 		die unless $entity->exists();
-		$entity->last_revision_id($revision);
 		$entity->modified(1);
 	}
 
@@ -403,7 +452,6 @@ sub get_entity {
 	return unless exists $self->path_to_entities()->{$path};
 
 	foreach my $candidate_entity (@{$self->path_to_entities()->{$path}}) {
-		next if $revision > $candidate_entity->last_revision_id();
 		next if $revision < $candidate_entity->first_revision_id();
 		return $candidate_entity;
 	}
@@ -412,20 +460,17 @@ sub get_entity {
 	return;
 }
 
+# Find the most specific containing entity.
 sub get_historical_entity {
 	my ($self, $revision, $path) = @_;
-
-#	my $exact_entity = $self->get_entity($path, $revision);
-#	return $exact_entity if $exact_entity;
 
 	my @path = split /\/+/, $path;
 	while (@path) {
 		my $test_path = join("/", @path);
 		next unless exists $self->path_to_entities()->{$test_path};
 
-		ENTITY: foreach my $entity (@{$self->path_to_entities()->{$test_path}}) {
-			next ENTITY if $revision > $entity->last_revision_id();
-			next ENTITY if $revision < $entity->first_revision_id();
+		foreach my $entity (@{$self->path_to_entities()->{$test_path}}) {
+			next if $revision < $entity->first_revision_id();
 			return $entity;
 		}
 	}
@@ -437,18 +482,22 @@ sub get_historical_entity {
 }
 
 sub delete_node {
-	my ($self, $path) = @_;
+	my ($self, $path, $revision) = @_;
 
-	my $node = $self->snapshots()->[-1]->root();
+	# Find the root node.
+	my $node = $self->snapshots()->[$revision]->root();
 
+	# Walk the contents for each path segment except the last.
 	my @path = split /\//, $path;
 	while (@path > 1) {
 		my $segment = shift @path;
 		$node = $node->contents()->{$segment};
 	}
 
+	# Delete the last segment from its container.
 	my $deleted_node = delete $node->contents()->{$path[0]};
 
+	# Map the deleted node class to a change class.
 	my $deletion_class;
 	if ($deleted_node->isa("SVN::Dump::Snapshot::Dir")) {
 		$deletion_class = "SVN::Dump::Change::Rmdir";
@@ -461,10 +510,12 @@ sub delete_node {
 	}
 
 	# TODO - Validate node kind?
+
+	# Instantiate the change, and add it to the revision.
 	$self->pending_revision()->push_change(
 		$deletion_class->new(
 			path      => $path,
-			container => $self->get_historical_entity($node->revision(), $path),
+			container => $self->get_historical_entity($revision, $path),
 		)
 	);
 

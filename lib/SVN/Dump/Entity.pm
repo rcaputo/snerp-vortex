@@ -5,8 +5,9 @@ package SVN::Dump::Entity;
 use Moose;
 use Carp qw(cluck carp);
 
+use constant DEBUG => 1;
+
 has first_revision_id => ( is => 'rw', isa => 'Int', required => 1 );
-has last_revision_id  => ( is => 'rw', isa => 'Int', required => 1 );
 has type              => ( is => 'rw', isa => 'Str', required => 1 );
 has name              => ( is => 'rw', isa => 'Str', required => 1 );
 has exists            => ( is => 'rw', isa => 'Bool', required => 1 );
@@ -28,9 +29,15 @@ sub fix_type {
 
 	my $type = $self->type();
 
+	DEBUG and print(
+		"!!! fixing $type ", $self->name(), " ", $self->first_revision_id(), "\n"
+	);
+
 	# I am modified if any entity that copies from me is modified.  SCMs
 	# that care need to know.
 	my $modified = $self->modified();
+	DEBUG and print "!!!  modified = ", ($modified||0), "\n";
+
 	unless ($modified) {
 		foreach (@{$self->descendents()}) {
 			if ($_->modified()) {
@@ -39,6 +46,10 @@ sub fix_type {
 			}
 		}
 	}
+
+	DEBUG and print(
+		"!!!  after checking descendents, modified = ", ($modified||0), "\n"
+	);
 
 	# TODO - Type fixing must consider renames.  Scenario:
 	#
@@ -55,12 +66,18 @@ sub fix_type {
 	# SVN::Dump::Replayer::Subversion would definitely be allowed.
 
 	if ($type eq "tag") {
-		$self->type("branch") if $modified;
+		if ($modified) {
+			$self->type("branch");
+			print "!!!  converting modified entity from tag to branch\n";
+		}
 		return;
 	}
 
 	if ($type eq "branch") {
-		$self->type("tag") unless $modified;
+		unless ($modified) {
+			print "!!!  converting unmodified entity from branch to tag\n";
+			$self->type("tag");
+		}
 		return;
 	}
 

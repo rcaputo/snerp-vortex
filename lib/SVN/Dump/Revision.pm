@@ -37,6 +37,13 @@ sub push_change {
 	) {
 		# TODO - Reblessing would be easier. Is it an option?
 		my $previous_change = pop @{$self->changes()};
+
+		# Renaming cannot change the entity type.  One may not rename a
+		# branch into a tag, a file into a directory, etc.
+		$previous_change->container()->type(
+			$previous_change->src_container()->type()
+		);
+
 		$change = SVN::Dump::Change::Rename->new(
 			path          => $previous_change->path(),
 			container     => $previous_change->container(),

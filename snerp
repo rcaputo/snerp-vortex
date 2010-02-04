@@ -4,6 +4,11 @@ use warnings;
 use strict;
 use lib qw(./lib);
 
+# Don't buffer standard output.  Buffered stdout would be faster, but
+# it tends to have synchronization issues with unbuffered stderr.
+use IO::Handle;
+STDOUT->autoflush(1);
+
 use Getopt::Long;
 
 my $replayer_class = "git";
