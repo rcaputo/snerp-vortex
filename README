@@ -32,6 +32,47 @@ I have only recently discovered git-fast-import.  I wish I knew about
 it sooner.  Snerp Vortex is flexible enough to use it later, with a
 potentially huge improvement in speed.
 
+=======
+Testing
+=======
+
+Until there's a proper test framework, here's the plan from a recent
+test I ran.
+
+Create a dummy repository, check it out and establish a test case
+within it.
+
+	svnadmin create binary-svn
+	svn co file:///home/troc/projects/git/binary-svn binary-co          
+	cd binary-co
+	cp ~/Downloads/wtf.gif .
+	svn add wtf.gif
+	svn commit -m 'Commit a binary file.' 
+
+Dump the repository.
+
+	cd ..
+	svnadmin dump binary-svn > binary-svn.dump
+
+Replay the repository into git.
+
+	cd snerp-vortex
+
+	time ./snerp \
+		--replayer=git \
+		--authors=/home/troc/projects/authors.txt \
+		--into=/Volumes/snerp-vortex-workspace/binary-git \
+		--dump=../binary-files.dump \
+		--copies=/Volumes/snerp-vortex-workspace/binary-snerp-copies \
+		--experimental \
+		--verbose
+
+Verify that the replayed binary file works.
+
+	open /Volumes/snerp-vortex-workspace/binary-git/wtf.gif
+
+The distribution's t/dumps directory is the repository for test dumps.
+
 ============
 Design Notes
 ============
