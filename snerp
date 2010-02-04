@@ -77,8 +77,11 @@ if ($uc_exists) {
 }
 
 if (defined $authors_file) {
-	unless (-f $authors_file) {
+	unless (-e $authors_file) {
 		die "$0: --authors path ($authors_file) must exist if used\n";
+	}
+	unless (-f $authors_file) {
+		die "$0: --authors path ($authors_file) must be a file\n";
 	}
 }
 
@@ -86,6 +89,9 @@ unless (defined $dump_file_name and length $dump_file_name) {
 	die "$0: --dump=FILENAME required\n";
 }
 
+unless (-e $dump_file_name) {
+	die "$0: --dump path ($dump_file_name) doesn't exist\n";
+}
 unless (-f $dump_file_name) {
 	die "$0: --dump path ($dump_file_name) must be a file\n";
 }
