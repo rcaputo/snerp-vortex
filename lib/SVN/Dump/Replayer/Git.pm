@@ -446,7 +446,7 @@ sub git_commit {
 		return;
 	}
 
-	my $git_commit_message_file = "/tmp/git-commit.txt";
+	my $git_commit_message_file = "/tmp/git-commit-$$.txt";
 
 	open my $tmp, ">", $git_commit_message_file or die $!;
 	print $tmp $revision->message() or die $!;
