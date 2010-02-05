@@ -76,8 +76,7 @@ sub on_node_add {
 }
 
 # Copy destinations may be entities.  Analyze them as they are created
-# by copies.  Also remember the details about 
-# Copy destinations may be entities.
+# by copies.
 sub on_node_copy {
 	my ($self, $dst_rev, $dst_path, $kind, $src_rev, $src_path, $text) = @_;
 
@@ -93,7 +92,13 @@ sub on_node_copy {
 	if ($src_entity and $src_entity->type() =~ /^(?:branch|tag)$/) {
 		my $dst_entity = $self->get_entity($dst_path, $dst_rev);
 		if ($dst_entity and $dst_entity->type() =~ /^(?:branch|tag)$/) {
-			die unless $dst_entity == $new_entity;
+			unless ($dst_entity == $new_entity) {
+				die(
+					$src_entity->debug("src(%s) "),
+					$dst_entity->debug("dst(%s) "),
+					$new_entity->debug("new(%s)\n"),
+				);
+			}
 			$self->log("  entity to entity copy");
 			push @{$src_entity->descendents()}, $dst_entity;
 		}
@@ -145,7 +150,7 @@ sub on_walk_done {
 
 	# Different SCMs may need to perform specific activities at this
 	# time.  They can achieve the same timing by adding specific logic
-	# to their "after on_walk_begin" methods.
+	# to their "before" or "after" on_walk_begin methods.
 }
 
 # Determine and remember a path's entity hint.  If the path doesn't
@@ -404,18 +409,31 @@ sub calculate_entity {
 	return("file", $path) if $kind eq "file";
 	die $kind if $kind ne "dir";
 
-	if ($path =~ /^tags\/([^\/]+)$/) {
-		(my $tag = $1) =~ s/[-\/_\s]+/_/g;
+	if ($path =~ /(^.*?)\/?tags\/([^\/]+)$/) {
+		my ($project, $tag) = ($1, $2);
+		$project =~ s/[-\/_\s]+/_/g;
+		$tag =~ s/[-\/_\s]+/_/g;
+		if (defined $project and length $project) {
+			return("tag", "$project-$tag");
+		}
 		return("tag", $tag);
 	}
 
-	if ($path =~ /^branches\/([^\/]+)$/) {
-		(my $branch = $1) =~ s/[-\/_\s]+/_/g;
+	if ($path =~ /(^.*?)\/?branch(?:es)?\/([^\/]+)$/) {
+		my ($project, $branch) = ($1, $2);
+		$project =~ s/[-\/_\s]+/_/g;
+		$branch =~ s/[-\/_\s]+/_/g;
+		if (defined $project and length $project) {
+			return("branch", "$project-$branch");
+		}
 		return("branch", $branch);
 	}
 
-	if ($path eq "trunk") {
-		#if ($path =~ /^trunk\/(\S+)$/) 
+	if ($path =~ /(^.*?)\/?trunk(?:\/|$)/) {
+		(my $project = $1) =~ s/[-\/_\s]+/_/g;
+		if (defined $project and length $project) {
+			return("branch", "$project-trunk");
+		}
 		return("branch", "trunk");
 	}
 
@@ -464,9 +482,9 @@ sub get_entity {
 
 	return unless exists $self->path_to_entities()->{$path};
 
-	foreach my $candidate_entity (@{$self->path_to_entities()->{$path}}) {
-		next if $revision < $candidate_entity->first_revision_id();
-		return $candidate_entity;
+	foreach my $candidate (reverse @{$self->path_to_entities()->{$path}}) {
+		next if $revision < $candidate->first_revision_id();
+		return $candidate;
 	}
 
 	# No match. :(
@@ -479,10 +497,13 @@ sub get_historical_entity {
 
 	my @path = ("", (split /\/+/, $path));
 	while (@path) {
-		my $test_path = join("/", @path);
+		# Skip the leading "" to avoid causing a leading "/".
+		# TODO - Feels a little hacky, in a bad way.
+		my $test_path = join("/", @path[1..$#path]);
+
 		next unless exists $self->path_to_entities()->{$test_path};
 
-		foreach my $entity (@{$self->path_to_entities()->{$test_path}}) {
+		foreach my $entity (reverse @{$self->path_to_entities()->{$test_path}}) {
 			next if $revision < $entity->first_revision_id();
 			return $entity;
 		}
@@ -491,6 +512,7 @@ sub get_historical_entity {
 		pop @path;
 	}
 
+	# TODO - Should code ever reach this now that we have meta root?
 	return;
 }
 
