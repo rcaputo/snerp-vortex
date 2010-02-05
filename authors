@@ -1,0 +1,42 @@
+#!/usr/bin/env perl
+
+use warnings;
+use strict;
+use lib qw(./lib);
+
+use SVN::Dump::AuthorExtractor;
+use Getopt::Long;
+
+my $dump_file_name;
+my $help = 0;
+
+my $getopt_okay = GetOptions(
+	'dump=s',       \$dump_file_name,
+	'help',         \$help,
+);
+
+if ($help or !$getopt_okay) {
+	die(
+		"$0 usage:\n",
+		"  --dump=FILENAME     location of svn dump file to replay\n",
+		"  --help              you're soaking in it.\n",
+	);
+}
+
+unless (defined $dump_file_name and length $dump_file_name) {
+	die "$0: --dump=FILENAME required\n";
+}
+unless (-e $dump_file_name) {
+	die "$0: --dump path ($dump_file_name) doesn't exist\n";
+}
+unless (-f $dump_file_name) {
+	die "$0: --dump path ($dump_file_name) must be a file\n";
+}
+
+# Begin replaying.
+
+my $replayer = SVN::Dump::AuthorExtractor->new(
+	svn_dump_filename => $dump_file_name,
+);
+
+$replayer->walk();
