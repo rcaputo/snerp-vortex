@@ -10,6 +10,11 @@ sub on_branch_directory_creation {
 	$self->do_mkdir($self->qualify_change_path($change));
 }
 
+sub on_tag_directory_creation {
+	my ($self, $change, $revision) = @_;
+	$self->do_mkdir($self->qualify_change_path($change));
+}
+
 sub on_branch_directory_copy {
 	my ($self, $change, $revision) = @_;
 	$self->do_directory_copy($change, $self->qualify_change_path($change));
@@ -66,6 +71,11 @@ sub on_directory_copy {
 }
 
 sub on_rename {
+	my ($self, $change, $revision) = @_;
+	$self->do_rename($change);
+}
+
+sub on_branch_rename {
 	my ($self, $change, $revision) = @_;
 	$self->do_rename($change);
 }
