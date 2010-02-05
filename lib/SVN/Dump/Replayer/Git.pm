@@ -56,6 +56,25 @@ after on_revision_done => sub {
 	$self->git_commit($final_revision);
 };
 
+# Before entity fixup, flag all source entities as modified, and
+# convert them to branches if necessary.  This pins these "tags" to
+# the filesystem, where they'll have files from which copies can be
+# made.
+# TODO - This all may become moot if we can copy from tags in git.
+before on_walk_begin => sub {
+	my $self = shift;
+
+	my $copy_sources = $self->arborist()->copy_sources();
+	while (my ($rev, $path_rec) = each %$copy_sources) {
+		foreach my $path (keys %$path_rec) {
+			my $entity = $self->arborist()->get_entity($path, $rev);
+			next unless $entity;
+			$entity->modified(1);
+			$entity->type("branch");
+		}
+	}
+};
+
 after on_walk_begin => sub {
 	my $self = shift;
 
