@@ -66,7 +66,7 @@ after on_walk_begin => sub {
 
 		open my $fh, "<", $self->authors_file() or die $!;
 		while (<$fh>) {
-			my ($nick, $name, $email) = (/(\S+)\s*=\s*(\S[^<]*?)\s*<(\S+?)>/);
+			my ($nick, $name, $email) = (/^\s*([^=]*?)\s*=\s*(\S[^<]*?)\s*<(\S+?)>/);
 			$self->authors()->{$nick} = SVN::Dump::Replayer::Git::Author->new(
 				name  => $name,
 				email => $email,
