@@ -238,6 +238,23 @@ sub on_tag_directory_copy {
 	$self->tags()->{$tag_name} = $revision;
 }
 
+sub on_tag_directory_creation {
+	my ($self, $change, $revision) = @_;
+
+	$self->git_commit($revision);
+
+	my $tag_name = $change->container()->name();
+	$self->push_dir($self->replay_base());
+
+	$self->git_env_setup($revision);
+
+	$self->pipe_into_or_die($revision->message(), "git tag -a -F - $tag_name");
+	$self->pop_dir();
+
+	$self->log("TAG) setting tag $tag_name");
+	$self->tags()->{$tag_name} = $revision;
+}
+
 sub on_tag_directory_deletion {
 	my ($self, $change, $revision) = @_;
 
