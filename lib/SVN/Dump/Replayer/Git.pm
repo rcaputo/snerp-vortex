@@ -150,6 +150,9 @@ sub on_directory_deletion {
 		$change->path(),
 	);
 
+	# git-rm doesn't always remove the files right away.
+	$self->do_rmdir($change->path()) if -e $change->path();
+
 	$self->ensure_parent_dir_exists($change->path());
 	$self->pop_dir();
 
@@ -183,6 +186,11 @@ sub on_branch_directory_deletion {
 		"git", "rm", "-r", "--ignore-unmatch", "-f", "--",
 		$change->path(),
 	);
+
+	# git-rm doesn't always remove the files right away.
+	$self->do_rmdir($change->path()) if -e $change->path();
+
+	$self->ensure_parent_dir_exists($change->path());
 	$self->pop_dir();
 
 	# Second, try a plain filesystem remove in case the file hasn't yet
@@ -232,6 +240,9 @@ sub on_file_deletion {
 		"git", "rm", "-r", "--ignore-unmatch", "-f", "--",
 		$change->path(),
 	);
+
+	# git-rm doesn't always remove the files right away.
+	$self->do_rmdir($change->path()) if -e $change->path();
 
 	$self->ensure_parent_dir_exists($change->path());
 	$self->pop_dir();
