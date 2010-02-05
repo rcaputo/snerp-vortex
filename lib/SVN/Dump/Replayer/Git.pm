@@ -27,7 +27,6 @@ has authors_file    => ( is => 'ro', isa => 'Str' );
 has authors => (
 	is => 'rw',
 	isa => 'HashRef[SVN::Dump::Replayer::Git::Author]',
-	default => sub { {} }
 );
 
 has files_needing_add => (
@@ -62,6 +61,9 @@ after on_walk_begin => sub {
 
 	# Set up authors mapping.
 	if (defined $self->authors_file()) {
+		# Initialize it.  Probably can use Moose to tell us it's been set.
+		$self->authors({});
+
 		open my $fh, "<", $self->authors_file() or die $!;
 		while (<$fh>) {
 			my ($nick, $name, $email) = (/(\S+)\s*=\s*(\S[^<]*?)\s*<(\S+?)>/);
@@ -496,13 +498,23 @@ sub git_env_setup {
 	$ENV{GIT_COMMITTER_DATE} = $ENV{GIT_AUTHOR_DATE} = $revision->time();
 
 	my $rev_author = $revision->author();
-	$ENV{GIT_COMMITTER_NAME} = $ENV{GIT_AUTHOR_NAME} = (
-		$self->authors()->{$rev_author}->name() || "A. U. Thor"
-	);
 
-	$ENV{GIT_COMMITTER_EMAIL} = $ENV{GIT_AUTHOR_EMAIL} = (
-		$self->authors()->{$rev_author}->email() || 'author@example.com'
-	);
+	my ($author_name, $author_email);
+	if ($self->authors()) {
+		my $git_author = $self->authors()->{$rev_author};
+		unless (defined $git_author and length $git_author) {
+			die "svn author '$rev_author' doesn't seem to be in your authors file";
+		}
+		$author_name = $git_author->name();
+		$author_email = $git_author->email();
+	}
+	else {
+		$author_name = $rev_author;
+		$author_email = "$rev_author\@example.com";
+	}
+
+	$ENV{GIT_COMMITTER_NAME}  = $ENV{GIT_AUTHOR_NAME}  = $author_name;
+	$ENV{GIT_COMMITTER_EMAIL} = $ENV{GIT_AUTHOR_EMAIL} = $author_email;
 }
 
 sub ensure_parent_dir_exists {
