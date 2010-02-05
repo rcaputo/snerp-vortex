@@ -97,7 +97,6 @@ sub on_revision_done {
 
 	# Changes are done.  Remember any copy sources that pull from this
 	# revision.
-
 	COPY: foreach my $copy (
 		map { @$_ }
 		values %{$self->arborist()->copy_sources()->{$revision_id} || {}}
@@ -119,8 +118,6 @@ sub on_revision_done {
 
 		$self->log("CPY) Copy from entity $src_entity");
 		$self->log("CPY) Copy from type ", $src_entity->type()) if $src_entity;
-
-		next COPY if $src_entity and $src_entity->type() eq "tag";
 
 		die "copy source path $copy_src_path doesn't exist" unless (
 			-e $copy_src_path
@@ -172,7 +169,7 @@ sub on_node_change {
 
 	my $entity = $self->arborist()->get_historical_entity($revision, $path);
 
-	if ($entity->type() ne "branch") {
+	if ($entity->type() ne "branch" and $entity->type() ne "meta") {
 		die $entity->debug("$path @ $revision changed outside a branch: %s");
 	}
 
