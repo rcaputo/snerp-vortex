@@ -12,7 +12,10 @@ STDOUT->autoflush(1);
 use Getopt::Long;
 
 my $replayer_class = "git";
-my ($authors_file, $replay_base, $dump_file_name, $copy_depot_path);
+my (
+	$authors_file, $replay_base, $dump_file_name, $copy_depot_path,
+	$path_prefix
+);
 my $verbose = 0;
 my $help = 0;
 my $agree = 0;
@@ -26,6 +29,7 @@ my $getopt_okay = GetOptions(
 	'verbose',      \$verbose,
 	'help',         \$help,
 	'experimental', \$agree,
+	'prefix=s',     \$path_prefix
 );
 
 if ($help or !$getopt_okay) {
@@ -43,6 +47,7 @@ if ($help or !$getopt_okay) {
 		"  --verbose           explain what's happening in great detail\n",
 		"  --help              you're soaking in it.\n",
 		"  --experimental      enable experimental features at one's own risk\n",
+		"  --prefix=STRING     limit replay to paths beginning with STRING\n",
 	);
 }
 
@@ -69,11 +74,15 @@ if (-e $replay_base) {
 }
 
 my $lc_replay = lc($replay_base);
-mkdir $lc_replay or die "$0: cannot create temporary directory at $replay_base: $!\n";
+mkdir $lc_replay or die(
+	"$0: cannot create temporary directory at $replay_base: $!\n"
+);
 my $uc_exists = -e uc($replay_base);
 rmdir $lc_replay;
 if ($uc_exists) {
-	die "$0: case sensitive filesystem required for --into path ($replay_base)\n";
+	die(
+		"$0: case sensitive filesystem required for --into path ($replay_base)\n"
+	);
 }
 
 if (defined $authors_file) {
@@ -118,6 +127,7 @@ my $replayer = $replayer_class->new(
 	copy_source_depot => $copy_depot_path,
 	authors_file      => $authors_file,
 	verbose           => $verbose,
+	path_prefix       => $path_prefix,
 );
 
 $replayer->walk();

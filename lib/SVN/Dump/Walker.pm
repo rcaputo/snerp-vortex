@@ -35,6 +35,11 @@ has svn_dump => (
 	},
 );
 
+has path_prefix => (
+	is	=> 'ro',
+	isa	=> 'Str',
+);
+
 # ($self, $revision)
 sub on_revision_done { undef }
 
@@ -80,6 +85,28 @@ sub walk {
 		next RECORD if $type eq "uuid";
 
 		my $header = $record->get_headers_block();
+
+		# Skip records that are in not in our prefix.
+		if ($self->path_prefix()) {
+			my $prefix = $self->path_prefix();
+			my $node_path = $header->get('Node-path');
+			next RECORD if defined $node_path and $node_path !~ /^\Q$prefix/;
+
+			# Make sure we're not crossing the streams.
+			my $copy_src_path = $header->get('Node-copyfrom-path');
+			if (
+				(defined $copy_src_path) and
+				(length $copy_src_path) and
+				($copy_src_path !~ /^\Q$prefix/)
+			) {
+				die(
+					"copy from $copy_src_path ",
+					"to $node_path ",
+					"violates --prefix $prefix at revision ",
+					$self->get_current_revision()
+				);
+			}
+		}
 
 		if ($type eq "revision") {
 			$self->on_revision_done($self->get_current_revision()) if (
