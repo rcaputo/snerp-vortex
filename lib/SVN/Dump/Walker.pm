@@ -89,7 +89,7 @@ sub walk {
 			$self->set_current_revision($header->{'Revision-number'});
 
 			my $author = $record->get_property("svn:author");
-			$author = "svn" unless defined($author) and length($author);
+			$author = "(no author)" unless defined($author) and length($author);
 
 			$self->on_revision(
 				$self->get_current_revision(),

@@ -505,14 +505,15 @@ sub git_env_setup {
 		unless (defined $git_author and length $git_author) {
 			die "svn author '$rev_author' doesn't seem to be in your authors file";
 		}
-		$author_name = $git_author->name();
+		$author_name  = $git_author->name();
 		$author_email = $git_author->email();
 	}
 	else {
-		$author_name = $rev_author;
+		$author_name  = $rev_author;
 		$author_email = "$rev_author\@example.com";
 	}
 
+	# TODO - Use the svn repository's GUID as the email host.
 	$ENV{GIT_COMMITTER_NAME}  = $ENV{GIT_AUTHOR_NAME}  = $author_name;
 	$ENV{GIT_COMMITTER_EMAIL} = $ENV{GIT_AUTHOR_EMAIL} = $author_email;
 }
