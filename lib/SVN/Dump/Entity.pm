@@ -88,7 +88,10 @@ sub fix_type {
 
 sub debug {
 	my ($self, $template) = @_;
-	sprintf $template, $self->type() . " " . $self->name();
+	sprintf(
+		$template,
+		$self->type() . " " . $self->name() . " r" .  $self->first_revision_id()
+	);
 }
 
 1;
