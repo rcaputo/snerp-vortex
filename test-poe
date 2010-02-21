@@ -1,6 +1,7 @@
 BASE=/Volumes/snerp-vortex-workspace
 INTO=$BASE/poe-git-replay
 COPIES=$BASE/poe-svn-copies
+DUMP=$BASE/poe-svn.dump
 
 echo 'Cleaning up directories.'
 time /bin/rm -rf $INTO $COPIES
@@ -10,7 +11,7 @@ time ./snerp \
 	--replayer=git \
 	--authors=/home/troc/projects/authors.txt \
 	--into=$INTO \
-	--dump=/home/troc/projects/git/poe-svn.dump \
+	--dump=$DUMP \
 	--copies=$COPIES \
 	--experimental \
 	--verbose
