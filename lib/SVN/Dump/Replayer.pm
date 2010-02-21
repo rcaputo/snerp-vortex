@@ -91,7 +91,7 @@ sub on_revision_done {
 				# TODO - Do nothing?
 			}
 			else {
-				die "unexpected container type: $container_type";
+				confess "unexpected container type: $container_type";
 			}
 		}
 
@@ -124,7 +124,7 @@ sub on_node_add {
 	my $entity = $self->arborist()->get_historical_entity($revision, $path);
 
 	unless (defined $entity) {
-		die "adding $kind $path in unknown entity";
+		confess "adding $kind $path in unknown entity";
 	}
 
 	undef;
@@ -136,7 +136,7 @@ sub on_node_change {
 	my $entity = $self->arborist()->get_historical_entity($revision, $path);
 
 	if ($entity->type() ne "branch" and $entity->type() ne "meta") {
-		die $entity->debug("$path @ $revision changed outside a branch: %s");
+		confess $entity->debug("$path @ $revision changed outside a branch: %s");
 	}
 
 	$self->arborist()->touch_node($path, $kind, $data);
@@ -166,7 +166,9 @@ sub on_node_copy {
 	my $d_entity = $self->arborist()->get_historical_entity($revision, $path);
 
 	unless ($d_entity) {
-		die "copying $kind $from_path to $path at $revision in unexpected entity";
+		confess(
+			"copying $kind $from_path to $path at $revision in unexpected entity"
+		);
 	}
 
 	# TODO - Complex.  See walk-svn.pl for starters.
@@ -213,19 +215,19 @@ sub do_or_die {
 sub pipe_into_or_die {
 	my ($self, $data, $cmd) = @_;
 	$self->log($cmd);
-	open my $fh, "|-", $cmd or die $!;
-	print $fh $data;
-	close $fh;
+	open my $fh, "|-", $cmd or confess $!;
+	print $fh $data or confess $!;
+	close $fh or confess $!;
 	return;
 }
 
 sub pipe_out_of_or_die {
 	my ($self, $cmd) = @_;
 	$self->log($cmd);
-	open my $fh, "-|", $cmd or die $!;
+	open my $fh, "-|", $cmd or confess $!;
 	local $/;
 	my $data = <$fh>;
-	close $fh;
+	close $fh or confiess $!;
 	return $data;
 }
 
@@ -283,15 +285,15 @@ sub log {
 sub rewrite_file {
 	my ($self, $change, $full_path) = @_;
 
-	die "edit $full_path failed: file doesn't exist" unless -e $full_path;
-	die "edit $full_path failed: path is not a file" unless -f $full_path;
+	confess "edit $full_path failed: file doesn't exist" unless -e $full_path;
+	confess "edit $full_path failed: path is not a file" unless -f $full_path;
 
   # File may not actually be changing.  The subversion change may only
   # be to properties, which we don't care about here.  Only bother
 	# checking if the file sizes are equal; saves a lot of I/O that way.
 
 	if ((-s $full_path) == do { use bytes; length($change->content()) }) {
-    open my $fh, "<", $full_path or die $!;
+    open my $fh, "<", $full_path or confess $!;
     local $/;
     my $current_text = <$fh>;
     if ($current_text eq $change->content()) {
@@ -309,7 +311,7 @@ sub rewrite_file {
 sub write_new_file {
 	my ($self, $change, $full_path) = @_;
 
-	die "create $full_path failed: file already exists" if -e $full_path;
+	confess "create $full_path failed: file already exists" if -e $full_path;
 
 	$self->log("creating file $full_path");
 
@@ -318,26 +320,30 @@ sub write_new_file {
 
 sub write_change_data {
 	my ($self, $change, $full_path) = @_;
-	open my $fh, ">", $full_path or die "create $full_path failed: $!";
-	print $fh $change->content();
-	close $fh;
+	open my $fh, ">", $full_path or confess "create $full_path failed: $!";
+	print $fh $change->content() or confess $!;
+	close $fh or confess $!;
 }
 
 sub do_file_deletion {
 	my ($self, $full_path) = @_;
 
-	die "delete $full_path failed: file doesn't exist" unless -e $full_path;
-	die "delete $full_path failed: path not to a file" unless -f $full_path;
+	confess "delete $full_path failed: file doesn't exist" unless -e $full_path;
+	confess "delete $full_path failed: path not to a file" unless -f $full_path;
 
 	$self->log("deleting file $full_path");
 
-	unlink $full_path or die "unlink $full_path failed: $!";
+	unlink $full_path or confess "unlink $full_path failed: $!";
 }
 
 sub do_rmdir_safely {
 	my ($self, $full_path) = @_;
-	die "rmtree $full_path failed: directory doesn't exist" unless -e $full_path;
-	die "rmtree $full_path failed: path not to a directory" unless -d $full_path;
+	confess "rmtree $full_path failed: directory doesn't exist" unless (
+		-e $full_path
+	);
+	confess "rmtree $full_path failed: path not to a directory" unless (
+		-d $full_path
+	);
 	$self->do_rmdir($full_path);
 }
 
@@ -347,7 +353,7 @@ sub do_rename {
 	my $full_src_path = $self->calculate_path($change->src_path());
 	my $full_dst_path = $self->calculate_path($change->path());
 
-	rename $full_src_path, $full_dst_path or die(
+	rename $full_src_path, $full_dst_path or confess(
 		"rename $full_src_path $full_dst_path failed: $!"
 	);
 }

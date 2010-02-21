@@ -85,7 +85,7 @@ after on_revision_done => sub {
 		# Sanity check.  Copy sources are always branches.
 		# TODO - They could be tags, since tags are just references to
 		# particular moments in time.
-		die $src_entity->type() unless $src_entity->type() eq "branch";
+		confess $src_entity->type() unless $src_entity->type() eq "branch";
 
 		my $branch = $src_entity->name();
 		my $git_branch = ($branch eq "trunk") ? "master" : $branch;
@@ -113,7 +113,7 @@ warn "!!!!! ", $src_entity->name();
 			$self->current_branch($git_branch);
 		}
 
-		die "copy source path $copy_src_path doesn't exist" unless (
+		confess "copy source path $copy_src_path doesn't exist" unless (
 			-e $copy_src_path
 		);
 
@@ -166,7 +166,7 @@ after on_walk_begin => sub {
 		# Initialize it.  Probably can use Moose to tell us it's been set.
 		$self->authors({});
 
-		open my $fh, "<", $self->authors_file() or die $!;
+		open my $fh, "<", $self->authors_file() or confess $!;
 		while (<$fh>) {
 			my ($nick, $name, $email) = (/^\s*([^=]*?)\s*=\s*([^<]*?)\s*<(\S+?)>/);
 
@@ -203,7 +203,7 @@ sub on_branch_directory_copy {
 	my ($self, $change, $revision) = @_;
 
 	# Branches must be created from containers.
-	die "source is not container" unless $change->is_from_container();
+	confess "source is not container" unless $change->is_from_container();
 
 	# TODO - This tells us how to map directories.
 	# "GIT) creating branch from trunk to tags/v0_06".
@@ -275,7 +275,7 @@ sub on_directory_deletion {
 	$self->set_branch($revision, $change->container());
 
 	my $rm_path = $change->rel_path();
-	die "can't remove nonexistent directory $rm_path" unless -e $rm_path;
+	confess "can't remove nonexistent directory $rm_path" unless -e $rm_path;
 
 	$self->git_env_setup($revision);
 
@@ -310,7 +310,9 @@ sub on_branch_directory_deletion {
 	$self->set_branch($revision, $change->container());
 
 	my $rm_path = $change->rel_path();
-	die "can't remove nonexistent branch directory $rm_path" unless -e $rm_path;
+	confess "can't remove nonexistent branch directory $rm_path" unless (
+		-e $rm_path
+	);
 
 	$self->git_env_setup($revision);
 
@@ -377,7 +379,7 @@ sub on_file_deletion {
 	$self->set_branch($revision, $change->container());
 
 	my $rm_path = $change->rel_path();
-	die "can't remove nonexistent file $rm_path" unless -e $rm_path;
+	confess "can't remove nonexistent file $rm_path" unless -e $rm_path;
 
 	$self->git_env_setup($revision);
 
@@ -451,15 +453,14 @@ sub on_file_rename {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 
-	die "target of file rename (", $change->path(), ") already exists" if (
+	confess "target of file rename (", $change->path(), ") already exists" if (
 		-e $change->path()
 	);
 
 	$self->git_env_setup($revision);
 
 	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
-	rename($change->src_path(), $change->path()) or
-	die(
+	rename($change->src_path(), $change->path()) or confess(
 		"file rename from ", $change->src_path(),
 		" to ", $change->path(),
 		"failed: $!"
@@ -475,15 +476,14 @@ sub on_rename {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 
-	die "target of rename (", $change->path(), ") already exists" if (
+	confess "target of rename (", $change->path(), ") already exists" if (
 		-e $change->path()
 	);
 
 	$self->git_env_setup($revision);
 
 	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
-	rename($change->src_path(), $change->path()) or
-	die(
+	rename($change->src_path(), $change->path()) or confess(
 		"rename from ", $change->src_path(),
 		" to ", $change->path(),
 		"failed: $!"
@@ -499,13 +499,12 @@ sub on_directory_rename {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 
-	die "target of directory rename (", $change->path(), ") already exists" if (
+	confess "target of dir rename (", $change->path(), ") already exists" if (
 		-e $change->path()
 	);
 
 	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
-	rename($change->src_path(), $change->path()) or
-	die(
+	rename($change->src_path(), $change->path()) or confess(
 		"directory rename from ", $change->src_path(),
 		" to ", $change->path(),
 		"failed: $!"
@@ -521,7 +520,7 @@ sub on_branch_rename {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 
-	die "target of branch rename (", $change->path(), ") already exists" if (
+	confess "target of branch rename (", $change->path(), ") already exists" if (
 		-e $change->path()
 	);
 
@@ -529,7 +528,7 @@ sub on_branch_rename {
 
 	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
 	rename($change->src_path(), $change->path()) or
-	die(
+	confess(
 		"branch rename from ", $change->src_path(),
 		" to ", $change->path(),
 		"failed: $!"
@@ -562,7 +561,7 @@ sub on_tag_rename {
 
 	# Find the change referenced by the old tag.
 	my $old_tag_ref = $self->pipe_out_of_or_die("git rev-parse -- $old_tag_name");
-	die "unreferenced tag $old_tag_name" unless (
+	confess "unreferenced tag $old_tag_name" unless (
 		defined $old_tag_ref and length $old_tag_ref
 	);
 	chomp $old_tag_ref;
@@ -631,9 +630,9 @@ sub git_commit {
 
 	my $git_commit_message_file = "/tmp/git-commit-$$.txt";
 
-	open my $tmp, ">", $git_commit_message_file or die $!;
-	print $tmp $revision->message() or die $!;
-	close $tmp or die $!;
+	open my $tmp, ">", $git_commit_message_file or confess $!;
+	print $tmp $revision->message() or confess $!;
+	close $tmp or confess $!;
 
 	$self->git_env_setup($revision);
 
@@ -706,7 +705,9 @@ sub git_env_setup {
 	if ($self->authors()) {
 		my $git_author = $self->authors()->{$rev_author};
 		unless (defined $git_author and length $git_author) {
-			die "svn author '$rev_author' doesn't seem to be in your authors file";
+			confess(
+				"svn author '$rev_author' doesn't seem to be in your authors file"
+			);
 		}
 		$author_name  = $git_author->name();
 		$author_email = $git_author->email();
@@ -727,7 +728,7 @@ sub ensure_parent_dir_exists {
 	return unless length $path and $path ne "/";
 	return if -e $path;
 	$self->log("mkpath $path");
-	mkpath($path) or die "mkpath failed: $!";
+	mkpath($path) or confess "mkpath failed: $!";
 }
 
 sub set_branch {
@@ -770,7 +771,7 @@ sub set_branch {
 sub do_directory_copy {
 	my ($self, $src_branch_name, $change, $branch_rel_path) = @_;
 
-	die "cp to $branch_rel_path failed: path exists" if -e $branch_rel_path;
+	confess "cp to $branch_rel_path failed: path exists" if -e $branch_rel_path;
 warn "!!!!! $src_branch_name";
 	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
 		$src_branch_name, $change
@@ -780,7 +781,7 @@ warn "!!!!! $src_branch_name";
 	$copy_depot_path .= ".tar.gz";
 
 	unless (-e $copy_depot_path) {
-		die "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
+		confess "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
 	}
 
 	$self->do_mkdir($branch_rel_path);
@@ -794,14 +795,14 @@ sub do_file_copy {
 
 	my $branch_rel_path = $change-rel_path();
 
-	die "cp to $branch_rel_path failed: path exists" if -e $branch_rel_path;
+	confess "cp to $branch_rel_path failed: path exists" if -e $branch_rel_path;
 
 	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
 		$src_branch_name, $change
 	);
 
 	unless (-e $copy_depot_path) {
-		die "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
+		confess "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
 	}
 
 	# Weirdly, the copy source may not be authoritative.
