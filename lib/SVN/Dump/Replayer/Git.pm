@@ -93,10 +93,10 @@ after on_revision_done => sub {
 		# The copy depot descriptor is a MD5 hex string describing the
 		# source path and revision.  Git's replayer uses it as a key into
 		# its hash-based copy depot.
-warn "!!!!! ", $src_entity->name();
+warn "!!!!! ", $git_branch;
 		my ($copy_depot_descriptor, $copy_depot_path) =
 			$self->calculate_depot_info(
-				$src_entity->name(), $copy->rel_src_path(), $copy->src_revision()
+				$git_branch, $copy->src_path(), $copy->src_revision()
 			);
 
 		my $copy_src_path = $copy->rel_src_path();
@@ -106,6 +106,7 @@ warn "!!!!! ", $src_entity->name();
 			$src_entity->name(), " ", $copy->src_path(), " at ",
 			$copy->src_revision()
 		);
+		$self->log("CPY) descriptor = $copy_depot_descriptor");
 
 		if ($git_branch ne $self->current_branch()) {
 			$self->log("GIT) switching to branch $git_branch");
@@ -303,37 +304,12 @@ sub on_directory_deletion {
 sub on_branch_directory_deletion {
 	my ($self, $change, $revision) = @_;
 
-	# TODO - Branches are pretty much mapped to directories for now.
-	# This is a copy/paste of on_directory_deletion().
-
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
-
-	my $rm_path = $change->rel_path();
-	confess "can't remove nonexistent branch directory $rm_path" unless (
-		-e $rm_path
-	);
-
 	$self->git_env_setup($revision);
-
-	$self->do_sans_die(
-		"git", "rm", "-r", "--ignore-unmatch", "-f", "--",
-		$rm_path,
+	$self->do_or_die(
+		"git", "branch", "-D",
+		$change->container()->name(),
 	);
-
-	# Second, try a plain filesystem remove in case the file hasn't yet
-	# been staged.  Since git-rm may have removed any number of parent
-	# directories for $rel_path, we only try to rmtree() if it still
-	# exists.
-
-	$self->do_rmdir($rm_path) if -e $rm_path;
-
-	# Git cleans up directories; svn assumes they exist.
-	$self->ensure_parent_dir_exists($rm_path);
-
-	delete $self->directories_needing_add()->{$change->path()};
-	$self->needs_commit(1);
-
 	$self->pop_dir();
 }
 
@@ -439,7 +415,6 @@ sub on_tag_directory_deletion {
 
 	# Tag deletion is out of band.
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
 	$self->git_env_setup($revision);
 	$self->do_or_die("git", "tag", "-d", $change->container()->name());
 	$self->pop_dir();
@@ -517,44 +492,46 @@ sub on_directory_rename {
 
 sub on_branch_rename {
 	my ($self, $change, $revision) = @_;
-	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
 
-	confess "target of branch rename (", $change->path(), ") already exists" if (
-		-e $change->path()
-	);
+	if (0) {
+		$self->push_dir($self->replay_base());
+		$self->set_branch($revision, $change->container());
 
-	$self->git_env_setup($revision);
+		confess "target of branch rename (", $change->path(), ") already exists" if (
+			-e $change->path()
+		);
 
-	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
-	rename($change->src_path(), $change->path()) or
-	confess(
-		"branch rename from ", $change->src_path(),
-		" to ", $change->path(),
-		"failed: $!"
-	);
+		$self->git_env_setup($revision);
 
-	$self->ensure_parent_dir_exists($change->src_path());
-	$self->pop_dir();
-	$self->needs_commit(1);
+		$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
+		rename($change->src_path(), $change->path()) or
+		confess(
+			"branch rename from ", $change->src_path(),
+			" to ", $change->path(),
+			" failed: $!"
+		);
 
-	# TODO - Try this when we have actual git branching.  Meanwhile, use
-	# the above git-mv code.
-	#
-	#$self->push_dir($self->replay_base());
-	#$self->do_or_die(
-	#	"git", "branch", "-m",
-	#	$change->src_container()->name(),
-	#	$change->container()->name(),
-	#);
-	#$self->pop_dir();
+		$self->ensure_parent_dir_exists($change->src_path());
+		$self->pop_dir();
+		$self->needs_commit(1);
+	}
+	else {
+		$self->push_dir($self->replay_base());
+		$self->git_env_setup($revision);
+		$self->do_or_die(
+			"git", "branch", "-m",
+			$change->src_container()->name(),
+			$change->container()->name(),
+		);
+		$self->pop_dir();
+	}
 }
 
 sub on_tag_rename {
 	my ($self, $change, $revision) = @_;
 
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+	#$self->set_branch($revision, $change->container());
 
 	my $old_tag_name = $change->src_container()->name();
 	my $new_tag_name = $change->container()->name();
@@ -793,7 +770,7 @@ warn "!!!!! $src_branch_name";
 sub do_file_copy {
 	my ($self, $src_branch_name, $change, $revision) = @_;
 
-	my $branch_rel_path = $change-rel_path();
+	my $branch_rel_path = $change->rel_path();
 
 	confess "cp to $branch_rel_path failed: path exists" if -e $branch_rel_path;
 
