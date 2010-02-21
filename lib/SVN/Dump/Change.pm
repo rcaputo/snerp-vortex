@@ -17,4 +17,21 @@ sub is_container {
 	return;
 }
 
+has rel_path => (
+	is => 'ro',
+	isa => 'Str',
+	lazy => 1,
+	default => sub {
+		my $self = shift;
+		my $path = $self->path();
+
+		return $path if $self->is_container();
+
+		my $container_path = $self->container()->path();
+
+		die unless $path =~ s/^\Q$container_path\E(\/|$)/trunk$1/;
+		return $path;
+	},
+);
+
 1;

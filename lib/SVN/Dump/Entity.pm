@@ -33,6 +33,10 @@ sub fix_type {
 		"!!! fixing $type ", $self->name(), " ", $self->first_revision_id(), "\n"
 	);
 
+	die if $type eq "file";
+	die if $type eq "dir";
+	die if $type eq "meta";
+
 	# I am modified if any entity that copies from me is modified.  VCSs
 	# that care need to know.
 	my $modified = $self->modified();
@@ -90,7 +94,8 @@ sub debug {
 	my ($self, $template) = @_;
 	sprintf(
 		$template,
-		$self->type() . " " . $self->name() . " r" .  $self->first_revision_id()
+		$self->type() . " " . $self->name() . " r" .
+		$self->first_revision_id() . " " . $self->path()
 	);
 }
 

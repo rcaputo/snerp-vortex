@@ -18,4 +18,18 @@ sub is_from_container {
 	return;
 }
 
+has rel_src_path => (
+	is => 'ro',
+	isa => 'Str',
+	lazy => 1,
+	default => sub {
+		my $self = shift;
+		my $path = $self->src_path();
+		my $container_path = $self->src_container()->path();
+
+		die unless $path =~ s/^\Q$container_path\E(\/|$)/trunk$1/;
+		return $path;
+	},
+);
+
 1;

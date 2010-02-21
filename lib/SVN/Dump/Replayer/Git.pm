@@ -99,7 +99,7 @@ warn "!!!!! ", $src_entity->name();
 				$src_entity->name(), $copy->src_path(), $copy->src_revision()
 			);
 
-		my $copy_src_path = $self->branch_relative_path($copy->src_path());
+		my $copy_src_path = $copy->rel_src_path();
 
 		$self->log(
 			"CPY) Copy from ", $src_entity->type(), " ",
@@ -192,7 +192,7 @@ sub on_branch_directory_creation {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 
-	my $path = $self->branch_relative_path($change->path());
+	my $path = $change->rel_path();
 	$self->do_mkdir($path);
 
 	$self->pop_dir();
@@ -234,9 +234,7 @@ sub on_branch_directory_copy {
 	return;
 
 #	$self->do_directory_copy($change, $self->qualify_change_path($change));
-#	$self->directories_needing_add()->{
-#		$self->branch_relative_path($change->path())
-#	} = 1;
+#	$self->directories_needing_add()->{$change->rel_path()} = 1;
 }
 
 sub on_directory_copy {
@@ -247,7 +245,9 @@ sub on_directory_copy {
 	my $src_branch_name = $change->src_container()->name();
 	$src_branch_name = "master" if $src_branch_name eq "trunk";
 
-	my $dst_path = $self->branch_relative_path($change->path());
+	#my $dst_path = $self->arborist()->calculate_relative_path($change->path());
+	my $dst_path = $change->path();
+
 	$self->do_directory_copy($src_branch_name, $change, $dst_path);
 	$self->directories_needing_add()->{$dst_path} = 1;
 	$self->pop_dir();
@@ -257,7 +257,7 @@ sub on_directory_creation {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
-	$self->do_mkdir($self->branch_relative_path($change->path()));
+	$self->do_mkdir($change->rel_path());
 	$self->pop_dir();
 }
 
@@ -274,7 +274,7 @@ sub on_directory_deletion {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 
-	my $rm_path = $self->branch_relative_path($change->path());
+	my $rm_path = $change->rel_path();
 	die "can't remove nonexistent directory $rm_path" unless -e $rm_path;
 
 	$self->git_env_setup($revision);
@@ -309,7 +309,7 @@ sub on_branch_directory_deletion {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 
-	my $rm_path = $self->branch_relative_path($change->path());
+	my $rm_path = $change->rel_path();
 	die "can't remove nonexistent branch directory $rm_path" unless -e $rm_path;
 
 	$self->git_env_setup($revision);
@@ -339,7 +339,7 @@ sub on_file_change {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
-	my $rewrite_path = $self->branch_relative_path($change->path());
+	my $rewrite_path = $change->rel_path();
 	if ($self->rewrite_file($change, $rewrite_path)) {
 		$self->files_needing_add()->{$rewrite_path} = 1;
 	}
@@ -354,7 +354,7 @@ sub on_file_copy {
 	my $src_branch_name = $change->container()->name();
 	$src_branch_name = "master" if $src_branch_name eq "trunk";
 
-	my $dst_path = $self->branch_relative_path($change->path());
+	my $dst_path = $change->rel_path();
 	$self->do_file_copy($src_branch_name, $change, $dst_path);
 	$self->files_needing_add()->{$dst_path} = 1;
 	$self->pop_dir();
@@ -364,7 +364,7 @@ sub on_file_creation {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
-	my $create_path = $self->branch_relative_path($change->path());
+	my $create_path = $change->rel_path();
 	$self->write_new_file($change, $create_path);
 	$self->files_needing_add()->{$create_path} = 1;
 	$self->pop_dir();
@@ -376,7 +376,7 @@ sub on_file_deletion {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 
-	my $rm_path = $self->branch_relative_path($change->path());
+	my $rm_path = $change->rel_path();
 	die "can't remove nonexistent file $rm_path" unless -e $rm_path;
 
 	$self->git_env_setup($revision);
@@ -766,18 +766,6 @@ sub set_branch {
 	$self->log($container->debug("!!! branch %s"));
 }
 
-# Remap the relative path to one that fits within the branch.
-sub branch_relative_path {
-	my ($self, $path) = @_;
-	return $path unless defined $self->path_regex();
-
-	my $path_regex = $self->path_regex();
-	my $path_map   = $self->path_map();
-
-	return $path if $path =~ s/^($path_regex)(?=\/|$)/$path_map->{$1}/;
-	return $self->arborist()->calculate_relative_path($path);
-}
-
 # Already in the destination branch.
 sub do_directory_copy {
 	my ($self, $src_branch_name, $change, $branch_rel_path) = @_;
@@ -804,7 +792,7 @@ warn "!!!!! $src_branch_name";
 sub do_file_copy {
 	my ($self, $src_branch_name, $change, $revision) = @_;
 
-	my $branch_rel_path = $self->branch_relative_path($change->path());
+	my $branch_rel_path = $change-rel_path();
 
 	die "cp to $branch_rel_path failed: path exists" if -e $branch_rel_path;
 

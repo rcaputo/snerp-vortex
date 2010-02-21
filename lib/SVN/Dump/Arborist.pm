@@ -110,15 +110,21 @@ sub on_node_copy {
 		}
 		else {
 			# Destination is not an entity.
+			$dst_entity = $self->get_historical_entity($dst_rev, $dst_path);
 		}
 	}
-	elsif ($dst_entity and $dst_entity->type() =~ /^(?:branch|tag)$/) {
-		# Non-entity to entity.
-		# Subversion supports branching and tagging subdirectories as well
-		# as entire projects.
-	}
 	else {
-		# Non-entity to non-entity.
+		$src_entity = $self->get_historical_entity($src_rev, $src_path);
+
+		if ($dst_entity and $dst_entity->type() =~ /^(?:branch|tag)$/) {
+			# Non-entity to entity.
+			# Subversion supports branching and tagging subdirectories as well
+			# as entire projects.
+		}
+		else {
+			# Non-entity to non-entity.
+			$dst_entity = $self->get_historical_entity($dst_rev, $dst_path);
+		}
 	}
 
 	# Recall the copy source, in case we need to take a source snapshot
@@ -130,6 +136,8 @@ sub on_node_copy {
 			src_path      => $src_path,
 			dst_revision  => $dst_rev,
 			dst_path      => $dst_path,
+			src_container => $src_entity,
+			dst_container => $dst_entity,
 		)
 	);
 }
@@ -330,6 +338,8 @@ sub add_new_node {
 	my $entity = $self->get_historical_entity($revision, $path);
 	die "$path at $revision has no entity" unless defined $entity;
 
+	warn $entity->debug("fetched historical: %s");
+
 	my ($node, $change);
 	if ($kind eq "dir") {
 		$node = SVN::Dump::Snapshot::Dir->new(revision => $revision);
@@ -351,6 +361,8 @@ sub add_new_node {
 	else {
 		die "strange kind: $kind";
 	}
+
+	warn "???", $change->path(), " -> relatively ", $change->rel_path(), "\n";
 
 	$self->add_node($revision, $path, $node);
 	$self->pending_revision()->push_change($change);
@@ -424,12 +436,12 @@ sub calculate_entity {
 	my ($self, $kind, $path) = @_;
 
 	if ($kind eq "file") {
-		return("file", $self->calculate_relative_path($path));
+		return("file", $path);
 	}
 
 	die $kind if $kind ne "dir";
 
-	if ($path =~ /(^.*?)\/?tags\/([^\/]+)$/) {
+	if ($path =~ /^(.*?)\/?tags\/([^\/]+)$/) {
 		my ($project, $tag) = ($1, $2);
 		$project =~ s/[-\/_\s]+/_/g;
 		$tag =~ s/[-\/_\s]+/_/g;
@@ -439,7 +451,7 @@ sub calculate_entity {
 		return("tag", $tag);
 	}
 
-	if ($path =~ /(^.*?)\/?branch(?:es)?\/([^\/]+)$/) {
+	if ($path =~ /^(.*?)\/?branch(?:es)?\/([^\/]+)$/) {
 		my ($project, $branch) = ($1, $2);
 		$project =~ s/[-\/_\s]+/_/g;
 		$branch =~ s/[-\/_\s]+/_/g;
@@ -449,29 +461,31 @@ sub calculate_entity {
 		return("branch", $branch);
 	}
 
-	if ($path =~ /(^.*?)\/?trunk(?:\/|$)/) {
-		(my $project = $1) =~ s/[-\/_\s]+/_/g;
-		if (defined $project and length $project) {
-			return("branch", "$project-trunk");
-		}
-		return("branch", "trunk");
-	}
+#	if ($path =~ /^(.*?)\/?trunk(?:\/|$)/) {
+#		(my $project = $1) =~ s/[-\/_\s]+/_/g;
+#		if (defined $project and length $project) {
+#			return("branch", "$project-trunk");
+#		}
+#		return("branch", "trunk");
+#	}
 
 	#return("meta", $path) if $path =~ /^(?:trunk|tags|branches)$/;
 	return("branch", "trunk") if $path =~ /^(?:trunk|tags|branches)$/;
 
-	return("dir", $self->calculate_relative_path($path));
+	return("dir", $path);
 }
 
 # NOTE - The prefixes that are extracted should be defined in terms of
-# the ones in calculate_entity().
+# the ones in calculate_entity().  Branch and tag prefixes are mapped
+# into their corresponding trunk locations.  Delicate business.  Can
+# it be made semi-automatic or at least more convenient?
+
 sub calculate_relative_path {
 	my ($self, $path) = @_;
 
-	$path =~ s/^.*?\/?tags\/[^\/]+\/?// or
-	$path =~ s/^.*?\/?branch(?:es)?\/[^\/]+\/?// or
-	$path =~ s/^.*?\/?trunk\/?// or
-	$path =~ s/^(?:trunk|tags|branches)$//
+	# Map branch and tag prefixes into trunk.
+	$path =~ s/^.*?\/?tags\/[^\/]+/trunk/ or
+	$path =~ s/^.*?\/?branch(?:es)?\/[^\/]+/trunk/
 	;
 
 	return $path;
@@ -540,6 +554,7 @@ sub get_historical_entity {
 
 		foreach my $entity (reverse @{$self->path_to_entities()->{$test_path}}) {
 			next if $revision < $entity->first_revision_id();
+			die if $entity->type() eq "file" or $entity->type() eq "dir";
 			return $entity;
 		}
 	}
@@ -548,6 +563,7 @@ sub get_historical_entity {
 	}
 
 	# TODO - Should code ever reach this now that we have meta root?
+	die;
 	return;
 }
 
