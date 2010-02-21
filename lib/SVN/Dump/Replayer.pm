@@ -49,8 +49,7 @@ has directory_stack => (
 
 has path_prefix => (
 	is	=> 'ro',
-	isa	=> 'Str',
-	default	=> '',
+	isa	=> 'Maybe[Str]',
 );
 
 ### Low-level tracking.
@@ -102,46 +101,6 @@ sub on_revision_done {
 		$self->$method($change, $revision);
 	}
 
-	# Changes are done.  Remember any copy sources that pull from this
-	# revision.
-	COPY: foreach my $copy (
-		map { @$_ }
-		values %{$self->arborist()->copy_sources()->{$revision_id} || {}}
-	) {
-		my ($copy_depot_descriptor, $copy_depot_path) = $self->calculate_depot_info(
-			$copy->src_path(), $copy->src_revision()
-		);
-
-		my $copy_src_path = $self->calculate_path($copy->src_path());
-
-		# Tags don't necessarily exist.
-		# TODO - However, this is a per-SCM behavior, so the decision
-		# belongs in a per-SCM subclass.
-		# TODO - Arborist::on_walk_done might be able to remove defunct
-		# copy sources so they never appear here.
-		my $src_entity = $self->arborist()->get_entity(
-			$copy->src_path(), $revision_id,
-		);
-
-		$self->log("CPY) Copy from entity $src_entity");
-		$self->log("CPY) Copy from type ", $src_entity->type()) if $src_entity;
-
-		die "copy source path $copy_src_path doesn't exist" unless (
-			-e $copy_src_path
-		);
-
-		if (-d $copy_src_path) {
-			$self->push_dir($copy_src_path);
-			$self->do_or_die("tar", "czf", "$copy_depot_path.tar.gz", ".");
-			$self->pop_dir();
-			next COPY;
-		}
-
-		$self->copy_file_or_die($copy_src_path, $copy_depot_path);
-		next COPY;
-	}
-
-	undef;
 }
 
 sub on_revision {
@@ -221,14 +180,16 @@ sub on_node_copy {
 ### Helper methods.  TODO - Might belong in subclasses.
 
 sub get_copy_depot_info {
-	my ($self, $change) = @_;
-	return $self->calculate_depot_info($change->src_path(), $change->src_rev());
+	my ($self, $branch, $change) = @_;
+	return $self->calculate_depot_info(
+		$branch, $change->src_path(), $change->src_rev()
+	);
 }
 
 sub calculate_depot_info {
-	my ($self, $path, $revision) = @_;
+	my ($self, $branch, $path, $revision) = @_;
 
-	my $copy_depot_descriptor = "$path $revision";
+	my $copy_depot_descriptor = "$branch $path $revision";
 
 	my $full_depot_path = (
 		$self->copy_source_depot() . "/" .
@@ -319,28 +280,6 @@ sub log {
 	print time() - $^T, " ", join("", @_), "\n";
 }
 
-sub do_directory_copy {
-	my ($self, $change, $full_dst_path) = @_;
-
-	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
-
-	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
-		$change
-	);
-
-	# Directory copy sources are tarballs.
-	$copy_depot_path .= ".tar.gz";
-
-	unless (-e $copy_depot_path) {
-		die "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
-	}
-
-	$self->do_mkdir($full_dst_path);
-	$self->push_dir($full_dst_path);
-	$self->do_or_die("tar", "xzf", $copy_depot_path);
-	$self->pop_dir();
-}
-
 sub rewrite_file {
 	my ($self, $change, $full_path) = @_;
 
@@ -393,29 +332,6 @@ sub do_file_deletion {
 	$self->log("deleting file $full_path");
 
 	unlink $full_path or die "unlink $full_path failed: $!";
-}
-
-sub do_file_copy {
-	my ($self, $change, $full_dst_path) = @_;
-
-	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
-
-	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
-		$change
-	);
-
-	unless (-e $copy_depot_path) {
-		die "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
-	}
-
-	# Weirdly, the copy source may not be authoritative.
-	if (defined $change->content()) {
-		$self->write_change_data($change, $full_dst_path);
-		return;
-	}
-
-	# If content isn't provided, however, copy the file from the depot.
-	$self->copy_file_or_die($copy_depot_path, $full_dst_path);
 }
 
 sub do_rmdir_safely {

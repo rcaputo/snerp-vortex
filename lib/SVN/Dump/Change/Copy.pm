@@ -12,7 +12,7 @@ has src_container => (
 	required => 1
 );
 
-sub from_container {
+sub is_from_container {
 	my $self = shift;
 	return 1 if $self->src_path() eq $self->src_container()->path();
 	return;

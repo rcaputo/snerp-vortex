@@ -37,7 +37,7 @@ has svn_dump => (
 
 has path_prefix => (
 	is	=> 'ro',
-	isa	=> 'Str',
+	isa	=> 'Maybe[Str]',
 );
 
 # ($self, $revision)

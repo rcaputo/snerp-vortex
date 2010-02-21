@@ -89,9 +89,14 @@ sub on_node_copy {
 	# If source and destination are entities, then record the copy for
 	# later analysis.
 	my $src_entity = $self->get_entity($src_path, $src_rev);
+	my $dst_entity = $self->get_entity($dst_path, $dst_rev);
+
 	if ($src_entity and $src_entity->type() =~ /^(?:branch|tag)$/) {
-		my $dst_entity = $self->get_entity($dst_path, $dst_rev);
+		# Source is an entity.
 		if ($dst_entity and $dst_entity->type() =~ /^(?:branch|tag)$/) {
+			# Source and destination are entities.
+
+			# Sanity check that the destination is the entity just created.
 			unless ($dst_entity == $new_entity) {
 				die(
 					$src_entity->debug("src(%s) "),
@@ -99,9 +104,21 @@ sub on_node_copy {
 					$new_entity->debug("new(%s)\n"),
 				);
 			}
+
 			$self->log("  entity to entity copy");
 			push @{$src_entity->descendents()}, $dst_entity;
 		}
+		else {
+			# Destination is not an entity.
+		}
+	}
+	elsif ($dst_entity and $dst_entity->type() =~ /^(?:branch|tag)$/) {
+		# Non-entity to entity.
+		# Subversion supports branching and tagging subdirectories as well
+		# as entire projects.
+	}
+	else {
+		# Non-entity to non-entity.
 	}
 
 	# Recall the copy source, in case we need to take a source snapshot
@@ -148,7 +165,7 @@ sub on_walk_done {
 	my $self = shift;
 	$_->fix_type() foreach @{$self->entities_to_fix()};
 
-	# Different SCMs may need to perform specific activities at this
+	# Different VCSs may need to perform specific activities at this
 	# time.  They can achieve the same timing by adding specific logic
 	# to their "before" or "after" on_walk_begin methods.
 }
@@ -406,7 +423,10 @@ sub touch_node {
 sub calculate_entity {
 	my ($self, $kind, $path) = @_;
 
-	return("file", $path) if $kind eq "file";
+	if ($kind eq "file") {
+		return("file", $self->calculate_relative_path($path));
+	}
+
 	die $kind if $kind ne "dir";
 
 	if ($path =~ /(^.*?)\/?tags\/([^\/]+)$/) {
@@ -437,9 +457,24 @@ sub calculate_entity {
 		return("branch", "trunk");
 	}
 
-	return("meta", $path) if $path =~ /^(?:trunk|tags|branches)$/;
+	#return("meta", $path) if $path =~ /^(?:trunk|tags|branches)$/;
+	return("branch", "trunk") if $path =~ /^(?:trunk|tags|branches)$/;
 
-	return("dir", $path);
+	return("dir", $self->calculate_relative_path($path));
+}
+
+# NOTE - The prefixes that are extracted should be defined in terms of
+# the ones in calculate_entity().
+sub calculate_relative_path {
+	my ($self, $path) = @_;
+
+	$path =~ s/^.*?\/?tags\/[^\/]+\/?// or
+	$path =~ s/^.*?\/?branch(?:es)?\/[^\/]+\/?// or
+	$path =~ s/^.*?\/?trunk\/?// or
+	$path =~ s/^(?:trunk|tags|branches)$//
+	;
+
+	return $path;
 }
 
 sub touch_entity {

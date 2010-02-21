@@ -33,7 +33,7 @@ sub fix_type {
 		"!!! fixing $type ", $self->name(), " ", $self->first_revision_id(), "\n"
 	);
 
-	# I am modified if any entity that copies from me is modified.  SCMs
+	# I am modified if any entity that copies from me is modified.  VCSs
 	# that care need to know.
 	my $modified = $self->modified();
 	DEBUG and print "!!!  modified = ", ($modified||0), "\n";
@@ -62,7 +62,7 @@ sub fix_type {
 	# are later copied, then it must be downgraded to a branch.
 	#
 	# TODO - Can we defer the behavior to SVN::Dump::Replayer::Git?
-	# Other SCM systems may not have Git's limitation.  For example,
+	# Other VCSs may not have Git's limitation.  For example,
 	# SVN::Dump::Replayer::Subversion would definitely be allowed.
 
 	if ($type eq "tag") {
