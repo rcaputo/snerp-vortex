@@ -96,7 +96,7 @@ after on_revision_done => sub {
 warn "!!!!! ", $src_entity->name();
 		my ($copy_depot_descriptor, $copy_depot_path) =
 			$self->calculate_depot_info(
-				$src_entity->name(), $copy->src_path(), $copy->src_revision()
+				$src_entity->name(), $copy->rel_src_path(), $copy->src_revision()
 			);
 
 		my $copy_src_path = $copy->rel_src_path();
@@ -246,7 +246,7 @@ sub on_directory_copy {
 	$src_branch_name = "master" if $src_branch_name eq "trunk";
 
 	#my $dst_path = $self->arborist()->calculate_relative_path($change->path());
-	my $dst_path = $change->path();
+	my $dst_path = $change->rel_path();
 
 	$self->do_directory_copy($src_branch_name, $change, $dst_path);
 	$self->directories_needing_add()->{$dst_path} = 1;
