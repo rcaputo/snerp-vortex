@@ -204,7 +204,19 @@ sub on_branch_directory_copy {
 	my ($self, $change, $revision) = @_;
 
 	# Branches must be created from containers.
-	confess "source is not container" unless $change->is_from_container();
+	warn $change->debug("... change: %s");
+
+	# TODO - Subversion supports "silly" things like branching and
+	# tagging subdirectories within entities.
+	# TODO - At the moment, the best we can do is tag or branch the
+	# entire containing entity.
+	# TODO - Consider identifying subdirectories that are treated like
+	# sub-branches and mapping them to proper branches.  Then they can
+	# be tagged as proper entities.
+
+	#unless ($change->is_from_container()) {
+	#	confess "source is not container";
+	#}
 
 	# TODO - This tells us how to map directories.
 	# "GIT) creating branch from trunk to tags/v0_06".
@@ -212,11 +224,11 @@ sub on_branch_directory_copy {
 	# become "trunk/".
 
 	$self->log(
-		"GIT) creating branch from ", $change->src_path(),
+		"GIT) creating branch from ", $change->src_container->path(),
 		" to ", $change->path()
 	);
 
-	$self->path_map()->{$change->path()} = $change->src_path();
+	$self->path_map()->{$change->path()} = $change->src_container->path();
 	my $regexp = join(
 		"|",
 		map { quotemeta($_) }

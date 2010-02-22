@@ -17,6 +17,15 @@ sub is_container {
 	return;
 }
 
+sub debug {
+	my ($self, $template) = @_;
+	sprintf(
+		$template,
+		$self->operation() . " " . $self->path() . " " .
+		$self->container()->debug("container(%s)")
+	);
+}
+
 has rel_path => (
 	is => 'ro',
 	isa => 'Str',
