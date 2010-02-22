@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-my $megabytes = 384;                        # Desired size of ramdisk.
+my $megabytes = 1024;                       # Desired size of ramdisk.
 my $blocks    = $megabytes * 2048;          # 512 bytes per block.
 my $vol_name  = "snerp-vortex-workspace";   # /Volumes/... mount point.
 
