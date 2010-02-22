@@ -21,7 +21,7 @@ has arborist => (
 		return SVN::Dump::Arborist->new(
 			svn_dump_filename => $self->svn_dump_filename(),
 			verbose           => $self->verbose(),
-			path_prefix       => $self->path_prefix(),
+			include_regexp    => $self->include_regexp(),
 		)->walk();
 	},
 );
@@ -47,9 +47,9 @@ has directory_stack => (
 	default => sub { [] },
 );
 
-has path_prefix => (
+has include_regexp => (
 	is	=> 'ro',
-	isa	=> 'Maybe[Str]',
+	isa	=> 'Maybe[RegexpRef]',
 );
 
 ### Low-level tracking.

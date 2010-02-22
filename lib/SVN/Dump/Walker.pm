@@ -35,9 +35,9 @@ has svn_dump => (
 	},
 );
 
-has path_prefix => (
+has include_regexp => (
 	is	=> 'ro',
-	isa	=> 'Maybe[Str]',
+	isa	=> 'Maybe[RegexpRef]',
 );
 
 # ($self, $revision)
@@ -86,23 +86,23 @@ sub walk {
 
 		my $header = $record->get_headers_block();
 
-		# Skip records that are in not in our prefix.
-		if ($self->path_prefix()) {
-			my $prefix = $self->path_prefix();
+		# Skip records that are not matched.
+		if ($self->include_regexp()) {
+			my $include_regexp = $self->include_regexp();
 			my $node_path = $header->get('Node-path');
-			next RECORD if defined $node_path and $node_path !~ /^\Q$prefix/;
+			next RECORD if defined $node_path and $node_path !~ /$include_regexp/;
 
 			# Make sure we're not crossing the streams.
 			my $copy_src_path = $header->get('Node-copyfrom-path');
 			if (
 				(defined $copy_src_path) and
 				(length $copy_src_path) and
-				($copy_src_path !~ /^\Q$prefix/)
+				($copy_src_path !~ /$include_regexp/)
 			) {
 				die(
 					"copy from $copy_src_path ",
 					"to $node_path ",
-					"violates --prefix $prefix at revision ",
+					"violates --include $include_regexp at revision ",
 					$self->get_current_revision()
 				);
 			}

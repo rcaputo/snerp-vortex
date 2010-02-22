@@ -14,7 +14,7 @@ use Getopt::Long;
 my $replayer_class = "git";
 my (
 	$authors_file, $replay_base, $dump_file_name, $copy_depot_path,
-	$path_prefix
+	$include_regexp,
 );
 my $verbose = 0;
 my $help = 0;
@@ -29,7 +29,7 @@ my $getopt_okay = GetOptions(
 	'verbose',      \$verbose,
 	'help',         \$help,
 	'experimental', \$agree,
-	'prefix=s',     \$path_prefix
+	'include=s',    \$include_regexp,
 );
 
 if ($help or !$getopt_okay) {
@@ -47,7 +47,7 @@ if ($help or !$getopt_okay) {
 		"  --verbose           explain what's happening in great detail\n",
 		"  --help              you're soaking in it.\n",
 		"  --experimental      enable experimental features at one's own risk\n",
-		"  --prefix=STRING     limit replay to paths beginning with STRING\n",
+		"  --include=REGEXP    limit replay to paths matching REGEXP\n",
 	);
 }
 
@@ -121,13 +121,16 @@ $replayer_class->import();
 
 # Begin replaying.
 
+# TODO - Coerce withiin SVN::Dump::Walker.
+$include_regexp = qr/$include_regexp/ if defined $include_regexp;
+
 my $replayer = $replayer_class->new(
 	svn_dump_filename => $dump_file_name,
 	replay_base       => $replay_base,
 	copy_source_depot => $copy_depot_path,
 	authors_file      => $authors_file,
 	verbose           => $verbose,
-	path_prefix       => $path_prefix,
+	include_regexp    => $include_regexp,
 );
 
 $replayer->walk();
