@@ -27,8 +27,8 @@ has path_to_entities => (
 			"" => [
 				SVN::Dump::Entity->new(
 					first_revision_id => 0,
-					type              => "meta",
-					name              => "root",
+					type              => "branch",
+					name              => "trunk",
 					exists            => 1,
 					path              => "",
 					modified          => 0,
@@ -72,7 +72,7 @@ has verbose => ( is => 'ro', isa => 'Bool', default => 0 );
 sub on_node_add {
 	my ($self, $revision, $path, $kind, $data) = @_;
 	$self->log("adding $kind $path at $revision");
-	$self->analyze_new_node($revision, $path, $kind);
+	$self->analyze_new_node($revision, $path, $kind, "add");
 }
 
 # Copy destinations may be entities.  Analyze them as they are created
@@ -84,7 +84,7 @@ sub on_node_copy {
 
 	# Identify file and directory copies, and track whether they create
 	# branches or tags.
-	my $new_entity = $self->analyze_new_node($dst_rev, $dst_path, $kind);
+	my $new_entity = $self->analyze_new_node($dst_rev, $dst_path, $kind, "copy");
 
 	# If source and destination are entities, then record the copy for
 	# later analysis.
@@ -183,13 +183,13 @@ sub on_walk_done {
 # latter behavior may be overloading it a bit.
 
 sub analyze_new_node {
-	my ($self, $revision, $path, $kind) = @_;
+	my ($self, $revision, $path, $kind, $operation) = @_;
 
 	my ($entity_type, $entity_name) = $self->calculate_entity($kind, $path);
 
 	# Adding a plain file or directory to an entity touches that entity,
 	# and all the entities it contains.
-	if ($entity_type =~ /^(?:file|dir)$/) {
+	if ($entity_type =~ /^(?:file|dir)$/ or $operation ne "copy") {
 		$self->touch_entity($revision, $path);
 		return;
 	}
@@ -338,8 +338,6 @@ sub add_new_node {
 	my $entity = $self->get_historical_entity($revision, $path);
 	die "$path at $revision has no entity" unless defined $entity;
 
-	warn $entity->debug("fetched historical: %s");
-
 	my ($node, $change);
 	if ($kind eq "dir") {
 		$node = SVN::Dump::Snapshot::Dir->new(revision => $revision);
@@ -361,8 +359,6 @@ sub add_new_node {
 	else {
 		die "strange kind: $kind";
 	}
-
-	warn "???", $change->path(), " -> relatively ", $change->rel_path(), "\n";
 
 	$self->add_node($revision, $path, $node);
 	$self->pending_revision()->push_change($change);

@@ -93,7 +93,7 @@ after on_revision_done => sub {
 		# The copy depot descriptor is a MD5 hex string describing the
 		# source path and revision.  Git's replayer uses it as a key into
 		# its hash-based copy depot.
-warn "!!!!! ", $git_branch;
+
 		my ($copy_depot_descriptor, $copy_depot_path) =
 			$self->calculate_depot_info(
 				$git_branch, $copy->src_path(), $copy->src_revision()
@@ -190,8 +190,12 @@ after on_walk_begin => sub {
 
 sub on_branch_directory_creation {
 	my ($self, $change, $revision) = @_;
+
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+
+	# Branch directories are always created out of master?
+	$self->set_branch($revision, "master");
+	#$self->set_branch($revision, $change->container());
 
 	my $path = $change->rel_path();
 	$self->do_mkdir($path);
@@ -204,7 +208,6 @@ sub on_branch_directory_copy {
 	my ($self, $change, $revision) = @_;
 
 	# Branches must be created from containers.
-	warn $change->debug("... change: %s");
 
 	# TODO - Subversion supports "silly" things like branching and
 	# tagging subdirectories within entities.
@@ -761,7 +764,7 @@ sub do_directory_copy {
 	my ($self, $src_branch_name, $change, $branch_rel_path) = @_;
 
 	confess "cp to $branch_rel_path failed: path exists" if -e $branch_rel_path;
-warn "!!!!! $src_branch_name";
+
 	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
 		$src_branch_name, $change
 	);

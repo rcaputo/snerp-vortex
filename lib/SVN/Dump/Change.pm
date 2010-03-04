@@ -38,7 +38,12 @@ has rel_path => (
 
 		my $container_path = $self->container()->path();
 
-		die unless $path =~ s/^\Q$container_path\E(\/|$)/trunk$1/;
+		if (length $container_path) {
+			die "$path is not within $container_path" unless (
+				$path =~ s/^\Q$container_path\E(\/|$)/trunk$1/
+			);
+		}
+
 		return $path;
 	},
 );
