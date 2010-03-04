@@ -1,36 +1,52 @@
 Snerp Vortex is an anagram of SVN Exporter.  It aims to be a faster,
-more reliable way to convert repositories from Subversion to Git than
-using git-svn and various abandonment techniques.
+more reliable way to create new repositories from Subversion dumps
+than using git-svn and various abandonment techniques.
 
-I started this project because the svn-to-git methods I'd read about
-and tried were slow and produced unsatisfying results.
+I started this project because the svn-to-git methods I'd tried were
+slow and produced unsatisfying results.
 
-Snerp Vortex replays a Subversion repository dump into a local
-directory, creating a new repository snapshot at each revision.  It
-will then perform some not-Subversion's repository action, such as
-"git commit -a".  The end result is a new repository with the
-significant history of the old one.
+Snerp Vortex works by replaying a Subversion repository dump into a
+local directory.  After each revision, it performs actions in another
+version control system, such as committing the new repository snapshot
+into git.  It also creates branches and tags as appropriate, and it's
+smart enough to tell the difference between them based on usage---not
+just because a directory is in /branches or /tags.
 
-"Significant" because some Subversion changes (such as property
-changes) don't map to other systems.
+The end result is a new repository with the significant history of the
+old one.  I say "significant" because some Subversion changes (such as
+property changes) don't map to other systems.
 
 Usage is simple.  See "./snerp --help".
 
 I consider this program to be "alpha" quality.  It seems to work in a
-limited test, exporting POE's Subversion repository in about 18
-minutes (2751 revisions).  Unfortunately Snerp Vortex is not properly
-tested yet.  I'm not certain how good the resulting exports are.
-Please give it a try, and let me know how it goes.
+limited test, exporting the first 2751 revisions of POE's repository
+(branches, tags and all) in a little under 5 minutes.  To be fair, it
+was reading from and writing to a RAM disk at the time.  See the
+mkramdisk_osx utility in this project.
 
-Special note for Mac OS X users:  Get yourselves a case-sensitive
-filesystem.  This is easier done than said.  Disk Utility can create
-empty random-access disk images with the filesystems of your choice.
-They mount in /Volumes and are accessible like any other filesystem.
-I'm using a 500MB one for testing.
+Snerp Vortex is not widely tested yet.  "It works for me", but it
+chokes on nonstandard repository layouts.  Please help make Snerp
+Vortex robust.
+
+=========
+OSX Users
+=========
+
+Get yourselves a case-sensitive filesystem.  This is easier done than
+said.  Disk Utility can create empty random-access disk images with
+the filesystems of your choice.  They mount in /Volumes and are
+accessible like any other filesystem.
+
+Even better, build a RAM disk if you have the memory to spare.  See
+the mkramdisk_osx utility in this project.
+
+=============
+Improvements?
+=============
 
 I have only recently discovered git-fast-import.  I wish I knew about
 it sooner.  Snerp Vortex is flexible enough to use it later, with a
-potentially huge improvement in speed.
+potential speed boost.
 
 =======
 Testing
@@ -77,31 +93,24 @@ The distribution's t/dumps directory is the repository for test dumps.
 Design Notes
 ============
 
-Smerp Vortex doesn't trust Subversion branches yet.  There are
-multiple kinds of branch, some of which don't map to Git's idea of
-branches.  For example, there's the branch that is someone's personal
-scratch workspace.  Then there's the branch intended to be merged back
-later.  Snerp Vortex takes the conservative approach, treating all
-branches as directories for now.  Better heuristics are welcome.
+There are multiple kinds of branch, some of which don't map to Git's
+idea of branches.  For example, there's the branch that is someone's
+personal scratch workspace.  Then there's the branch intended to be
+merged back later.
 
 Tags and branches are defined by usage patterns, not by the
-directories in which they live.  A Subversion copy can create either a
-branch or a tag.  Branches are modified after copying, and tags are
-not.  It's quite possible to svn-cp something into /tags and then
-change it.  Snerp Vortex treats that as a branch.  Likewise, one may
-svn-cp something into /branches and then ignore it.  Snerp Vortex
-considers it a tag.
+directories in which they live.  Proper branches and tags are created
+by copying, not by creating directories.  The difference is that
+branches are modified after copying while tags are not.  Subversion
+"tags" are frequently modified, and "branches" are sometimes never
+touched.  Snerp Vortex tries to be smart about this.
 
-No attempt is made to split spin-off projects from the main project in
-a repository.  In personal experience, spin-off projects are moved
+Subprojects are not attempted to be spun off into separate
+repositories.  In personal experience, spin-off projects are moved
 from /trunk into some new directory, possibly also in trunk.  The
-files are then modified there.  To preserve full history, I intend to
-fork the main Git repository, delete everything but the spin-off, and
-then reorganize the new repository.  Better plans are welcome.
-
-Ideally, Snerp Vortex should remap directories and such on the fly as
-it's replaying a Subversion dump into a Git repository.  For now I'm
-willing to do that by hand afterwards.
+files are then modified there.  To preserve full history, I plan to
+fork the full Git repository and follow Michaelangelo's advice: carve
+away everything that isn't the project.  Better plans are welcome.
 
 Subversion can tag subdirectories within trunk.  After all, tags are
 just directory copies.  Git cannot.  Subversion tags are translated to
