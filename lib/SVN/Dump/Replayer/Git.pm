@@ -50,7 +50,7 @@ has tags => ( is => 'rw', isa => 'HashRef[GitTag]', default => sub { {} } );
 
 has path_map => ( is => 'rw', isa => 'HashRef[Str]', default => sub { {} } );
 has path_regex => ( is => 'rw', isa => 'RegexpRef' );
-has current_branch => ( is => 'rw', isa => 'Str', default => '' );
+has current_branch => ( is => 'rw', isa => 'Str', default => 'master' );
 
 {
 	package SVN::Dump::Replayer::Git::CopySrc;
@@ -110,7 +110,7 @@ after on_revision_done => sub {
 
 		if ($git_branch ne $self->current_branch()) {
 			$self->log("GIT) switching to branch $git_branch");
-			$self->do_sans_die("git", "checkout", $git_branch);
+			$self->do_sans_die("git", "checkout", "-q", $git_branch);
 			$self->current_branch($git_branch);
 		}
 
@@ -243,7 +243,7 @@ sub on_branch_directory_copy {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->src_container());
 	$self->do_or_die(
-		"git", "checkout", "-b", $change->container()->name()
+		"git", "checkout", "-q", "-b", $change->container()->name()
 	);
 	$self->current_branch($change->container()->name());
 	$self->pop_dir();
@@ -296,7 +296,7 @@ sub on_directory_deletion {
 	$self->git_env_setup($revision);
 
 	$self->do_sans_die(
-		"git", "rm", "-r", "--ignore-unmatch", "-f", "--",
+		"git", "rm", "-r", "--ignore-unmatch", "-f", "-q", "--",
 		$rm_path,
 	);
 
@@ -375,7 +375,7 @@ sub on_file_deletion {
 	$self->git_env_setup($revision);
 
 	$self->do_sans_die(
-		"git", "rm", "-r", "--ignore-unmatch", "-f", "--",
+		"git", "rm", "-r", "--ignore-unmatch", "-f", "-q", "--",
 		$rm_path,
 	);
 
@@ -744,7 +744,7 @@ sub set_branch {
 
 		$self->git_commit($revision);
 
-		$self->do_sans_die("git", "checkout", $name);
+		$self->do_sans_die("git", "checkout", "-q", $name);
 		$self->current_branch($name);
 
 		# TODO - We also need to prune the paths within the entity.
