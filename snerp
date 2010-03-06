@@ -105,9 +105,9 @@ unless (-f $dump_file_name) {
 	die "$0: --dump path ($dump_file_name) must be a file\n";
 }
 
-unless (defined $copy_depot_path and length $copy_depot_path) {
-	die "$0: --copies=PATH required\n";
-}
+$copy_depot_path = "$replay_base.copies" unless (
+	defined $copy_depot_path and length $copy_depot_path
+);
 
 if (-e $copy_depot_path) {
 	die "$0: --copies path ($copy_depot_path) must not exist\n";
