@@ -23,7 +23,7 @@ has path_to_entities => (
 	is => 'rw',
 	isa => 'HashRef[ArrayRef[SVN::Dump::Entity]]',
 	default => sub {
-		{
+		return {
 			"" => [
 				SVN::Dump::Entity->new(
 					first_revision_id => 0,
@@ -32,9 +32,10 @@ has path_to_entities => (
 					exists            => 1,
 					path              => "",
 					modified          => 0,
+					base_path         => "",
 				),
 			],
-		},
+		};
 	},
 );
 
@@ -185,7 +186,9 @@ sub on_walk_done {
 sub analyze_new_node {
 	my ($self, $revision, $path, $kind, $operation) = @_;
 
-	my ($entity_type, $entity_name) = $self->calculate_entity($kind, $path);
+	my ($entity_type, $entity_name, $entity_base) = $self->calculate_entity(
+		$kind, $path
+	);
 
 	# Adding a plain file or directory to an entity touches that entity,
 	# and all the entities it contains.
@@ -204,6 +207,7 @@ sub analyze_new_node {
 		exists            => 1,
 		path              => $path,
 		modified          => 0,
+		base_path         => $entity_base,
 	);
 
 	push @{$self->path_to_entities()->{$path}}, $new_entity;
@@ -431,44 +435,45 @@ sub touch_node {
 sub calculate_entity {
 	my ($self, $kind, $path) = @_;
 
-	if ($kind eq "file") {
-		return("file", $path);
-	}
+	$path = "" unless defined $path;
+
+	return("file", $path, $path) if $kind eq "file";
 
 	die $kind if $kind ne "dir";
 
-	if ($path =~ /^(.*?)\/?tags\/([^\/]+)$/) {
-		my ($project, $tag) = ($1, $2);
-		$project =~ s/[-\/_\s]+/_/g;
-		$tag =~ s/[-\/_\s]+/_/g;
-		if (defined $project and length $project) {
-			return("tag", "$project-$tag");
-		}
-		return("tag", $tag);
-	}
+	# Empty path name.
+	return("branch", "trunk", "") unless defined $path and length $path;
 
-	if ($path =~ /^(.*?)\/?branch(?:es)?\/([^\/]+)$/) {
-		my ($project, $branch) = ($1, $2);
-		$project =~ s/[-\/_\s]+/_/g;
-		$branch =~ s/[-\/_\s]+/_/g;
-		if (defined $project and length $project) {
-			return("branch", "$project-$branch");
-		}
-		return("branch", $branch);
-	}
+	# Special top-level paths.
+	return("branch", "trunk", $1) if (
+		$path =~ m!^(trunk|tags?|branch(?:es)?)$!
+	);
 
-#	if ($path =~ /^(.*?)\/?trunk(?:\/|$)/) {
-#		(my $project = $1) =~ s/[-\/_\s]+/_/g;
-#		if (defined $project and length $project) {
-#			return("branch", "$project-trunk");
-#		}
-#		return("branch", "trunk");
-#	}
+	# Branches and tags.
+	return("branch", "branch-$1", "trunk") if (
+		$path =~ m!^branch(?:es)?/([^/]+)/?$!
+	);
+	return("tag", "tag-$1", "trunk") if (
+		$path =~ m!^tags?/([^/]+)/?$!
+	);
 
-	#return("meta", $path) if $path =~ /^(?:trunk|tags|branches)$/;
-	return("branch", "trunk") if $path =~ /^(?:trunk|tags|branches)$/;
+	# Project directories.
+	# TODO - Not well tested!
 
-	return("dir", $path);
+	return("branch", "proj-$1", "") if $path =~ m!^([^/]+)$!;
+
+#	return("branch", "proj-$1", $2) if (
+#		$path =~ m!^([^/]+)/(trunk|branch(?:es)|tags?)$!
+#	);
+#	return("branch", "proj-$1-branch-$2", "") if (
+#		$path =~ m!^([^/]+)/branch(?:es)?/([^/]+)$!
+#	);
+#	return("tag", "proj-$1-tag-$2", "") if (
+#		$path =~ m!^([^/]+)/tags?/([^/]+)$!
+#	);
+
+	# Catch-all.  Must go at the end.
+	return("dir", $path, $path);
 }
 
 # NOTE - The prefixes that are extracted should be defined in terms of
@@ -476,16 +481,16 @@ sub calculate_entity {
 # into their corresponding trunk locations.  Delicate business.  Can
 # it be made semi-automatic or at least more convenient?
 
-sub calculate_relative_path {
-	my ($self, $path) = @_;
-
-	# Map branch and tag prefixes into trunk.
-	$path =~ s/^.*?\/?tags\/[^\/]+/trunk/ or
-	$path =~ s/^.*?\/?branch(?:es)?\/[^\/]+/trunk/
-	;
-
-	return $path;
-}
+#sub calculate_relative_path {
+#	my ($self, $path) = @_;
+#
+#	# Map branch and tag prefixes into trunk.
+#	$path =~ s/^.*?\/?tags\/[^\/]+/trunk/ or
+#	$path =~ s/^.*?\/?branch(?:es)?\/[^\/]+/trunk/
+#	;
+#
+#	return $path;
+#}
 
 sub touch_entity {
 	my ($self, $revision, $path) = @_;

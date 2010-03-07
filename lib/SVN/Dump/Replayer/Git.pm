@@ -20,7 +20,7 @@ package SVN::Dump::Replayer::Git;
 
 use Moose;
 extends 'SVN::Dump::Replayer';
-use Carp qw(croak);
+use Carp qw(croak cluck);
 use File::Path qw(mkpath);
 
 has authors_file    => ( is => 'ro', isa => 'Str' );
@@ -48,8 +48,6 @@ has revisions_until_gc => ( is => 'rw', isa => 'Int', default => 1000 );
 
 has tags => ( is => 'rw', isa => 'HashRef[GitTag]', default => sub { {} } );
 
-has path_map => ( is => 'rw', isa => 'HashRef[Str]', default => sub { {} } );
-has path_regex => ( is => 'rw', isa => 'RegexpRef' );
 has current_branch => ( is => 'rw', isa => 'Str', default => 'master' );
 
 {
@@ -79,7 +77,7 @@ after on_revision_done => sub {
 		$self->log($copy->debug("CPY) saving %s"));
 
 		my $src_entity = $self->arborist()->get_historical_entity(
-			$revision_id, $copy->src_path(),
+			$revision_id, $copy->rel_src_path(),
 		);
 
 		# Sanity check.  Copy sources are always branches.
@@ -87,8 +85,8 @@ after on_revision_done => sub {
 		# particular moments in time.
 		confess $src_entity->type() unless $src_entity->type() eq "branch";
 
-		my $branch = $src_entity->name();
-		my $git_branch = ($branch eq "trunk") ? "master" : $branch;
+		my $svn_branch = $src_entity->name();
+		my $git_branch = $self->get_git_branch_name($src_entity);
 
 		# The copy depot descriptor is a MD5 hex string describing the
 		# source path and revision.  Git's replayer uses it as a key into
@@ -96,7 +94,7 @@ after on_revision_done => sub {
 
 		my ($copy_depot_descriptor, $copy_depot_path) =
 			$self->calculate_depot_info(
-				$git_branch, $copy->src_path(), $copy->src_revision()
+				$svn_branch, $copy->rel_src_path(), $copy->src_revision()
 			);
 
 		my $copy_src_path = $copy->rel_src_path();
@@ -185,6 +183,17 @@ after on_walk_begin => sub {
 
 	$self->push_dir($self->replay_base());
 	$self->do_or_die("git", "init", ($self->verbose() ? () : ("-q")));
+
+#	# Perform an initial commit so that the master branch is ready.
+#	# Needed in case the repository branches right away.
+#	# TODO - Detect when needed, and only use then.
+#	my $initial_file = "deleteme.snerp.vortex";
+#	open my $fh, ">", $initial_file or die $!;
+#	print $fh "Created by Snerp Vortex.\n";
+#	close $fh;
+#	$self->do_or_die("git", "add", "-f", $initial_file);
+#	$self->needs_commit(1);
+
 	$self->pop_dir();
 };
 
@@ -231,21 +240,12 @@ sub on_branch_directory_copy {
 		" to ", $change->path()
 	);
 
-	$self->path_map()->{$change->path()} = $change->src_container->path();
-	my $regexp = join(
-		"|",
-		map { quotemeta($_) }
-		sort { (length($b) <=> length($a)) || ($a cmp $b) }
-		keys %{$self->path_map()}
-	);
-	$self->path_regex(qr/$regexp/);
-
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->src_container());
-	$self->do_or_die(
-		"git", "checkout", "-q", "-b", $change->container()->name()
-	);
-	$self->current_branch($change->container()->name());
+
+	my $new_branch_name = $self->get_git_branch_name($change->container());
+	$self->do_or_die("git", "checkout", "-q", "-b", $new_branch_name);
+	$self->current_branch($new_branch_name);
 	$self->pop_dir();
 	return;
 
@@ -258,8 +258,8 @@ sub on_directory_copy {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 
+	# SVN branch name for finding copy source.
 	my $src_branch_name = $change->src_container()->name();
-	$src_branch_name = "master" if $src_branch_name eq "trunk";
 
 	#my $dst_path = $self->arborist()->calculate_relative_path($change->path());
 	my $dst_path = $change->rel_path();
@@ -322,8 +322,7 @@ sub on_branch_directory_deletion {
 	$self->push_dir($self->replay_base());
 	$self->git_env_setup($revision);
 	$self->do_or_die(
-		"git", "branch", "-D",
-		$change->container()->name(),
+		"git", "branch", "-D", $self->get_git_branch_name($change->container())
 	);
 	$self->pop_dir();
 }
@@ -333,6 +332,7 @@ sub on_file_change {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 	my $rewrite_path = $change->rel_path();
+
 	if ($self->rewrite_file($change, $rewrite_path)) {
 		$self->files_needing_add()->{$rewrite_path} = 1;
 	}
@@ -344,11 +344,12 @@ sub on_file_copy {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 
-	my $src_branch_name = $change->container()->name();
-	$src_branch_name = "master" if $src_branch_name eq "trunk";
+	# SVN branch name for finding copy source.
+	my $src_branch_name = $change->src_container()->name();
 
 	my $dst_path = $change->rel_path();
-	$self->do_file_copy($src_branch_name, $change, $dst_path);
+
+	$self->do_file_copy($src_branch_name, $change);
 	$self->files_needing_add()->{$dst_path} = 1;
 	$self->pop_dir();
 }
@@ -358,6 +359,7 @@ sub on_file_creation {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 	my $create_path = $change->rel_path();
+
 	$self->write_new_file($change, $create_path);
 	$self->files_needing_add()->{$create_path} = 1;
 	$self->pop_dir();
@@ -443,16 +445,16 @@ sub on_file_rename {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->container());
 
-	confess "target of file rename (", $change->path(), ") already exists" if (
-		-e $change->path()
+	confess "target of file rename (", $change->rel_path(), ") exists" if (
+		-e $change->rel_path()
 	);
 
 	$self->git_env_setup($revision);
 
 	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
-	rename($change->src_path(), $change->path()) or confess(
-		"file rename from ", $change->src_path(),
-		" to ", $change->path(),
+	rename($change->rel_src_path(), $change->rel_path()) or confess(
+		"file rename from ", $change->rel_src_path(),
+		" to ", $change->rel_path(),
 		"failed: $!"
 	);
 
@@ -535,8 +537,8 @@ sub on_branch_rename {
 		$self->git_env_setup($revision);
 		$self->do_or_die(
 			"git", "branch", "-m",
-			$change->src_container()->name(),
-			$change->container()->name(),
+			$self->get_git_branch_name($change->src_container()),
+			$self->get_git_branch_name($change->container()),
 		);
 		$self->pop_dir();
 	}
@@ -642,7 +644,7 @@ sub git_commit {
 		$self->do_or_die(
 			"git", "commit",
 			($self->verbose() ? () : ("-q")),
-			"-F", $git_commit_message_file
+			"--allow-empty", "-F", $git_commit_message_file
 		);
 	}
 
@@ -730,12 +732,9 @@ sub set_branch {
 
 	# What we do depends on the changed entity type.
 	my $type = $container->type();
-	my $name = $container->name();
+	my $name = $self->get_git_branch_name($container);
 
 	if ($type eq "branch") {
-
-		# Subversion trunk equates to git master.
-		$name = "master" if $name eq "trunk";
 
 		if ($name eq $self->current_branch()) {
 			$self->log("GIT) already on branch $name");
@@ -773,7 +772,7 @@ sub do_directory_copy {
 	$copy_depot_path .= ".tar.gz";
 
 	unless (-e $copy_depot_path) {
-		confess "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
+		confess "cp src $copy_depot_path ($copy_depot_descriptor) doesn't exist";
 	}
 
 	$self->do_mkdir($branch_rel_path);
@@ -783,7 +782,7 @@ sub do_directory_copy {
 }
 
 sub do_file_copy {
-	my ($self, $src_branch_name, $change, $revision) = @_;
+	my ($self, $src_branch_name, $change) = @_;
 
 	my $branch_rel_path = $change->rel_path();
 
@@ -794,7 +793,7 @@ sub do_file_copy {
 	);
 
 	unless (-e $copy_depot_path) {
-		confess "cp source $copy_depot_path ($copy_depot_descriptor) doesn't exist";
+		confess "cp src $copy_depot_path ($copy_depot_descriptor) doesn't exist";
 	}
 
 	# Weirdly, the copy source may not be authoritative.
@@ -805,6 +804,13 @@ sub do_file_copy {
 
 	# If content isn't provided, however, copy the file from the depot.
 	$self->copy_file_or_die($copy_depot_path, $branch_rel_path);
+}
+
+sub get_git_branch_name {
+	my ($self, $branch) = @_;
+	my $name = $branch->name();
+	return "master" if $name eq "trunk";
+	return $name;
 }
 
 1;

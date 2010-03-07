@@ -184,7 +184,7 @@ sub on_node_copy {
 sub get_copy_depot_info {
 	my ($self, $branch, $change) = @_;
 	return $self->calculate_depot_info(
-		$branch, $change->src_path(), $change->src_rev()
+		$branch, $change->rel_src_path(), $change->src_rev()
 	);
 }
 

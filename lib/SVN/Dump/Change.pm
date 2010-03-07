@@ -37,12 +37,19 @@ has rel_path => (
 		return $path if $self->is_container();
 
 		my $container_path = $self->container()->path();
+		my $base_path = $self->container()->base_path();
 
 		if (length $container_path) {
-			die "$path is not within $container_path" unless (
-				$path =~ s/^\Q$container_path\E(\/|$)/trunk$1/
+			die "path $path is not within container $container_path" unless (
+				$path =~ s!^\Q$container_path\E(/|$)!./$base_path$1!
 			);
 		}
+		else {
+			substr($path, 0, 0) = "./$base_path/";
+		}
+
+		$path =~ tr[/][/]s;
+		$path =~ s!/+$!!;
 
 		return $path;
 	},

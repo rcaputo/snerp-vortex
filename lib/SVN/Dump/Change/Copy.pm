@@ -24,10 +24,23 @@ has rel_src_path => (
 	lazy => 1,
 	default => sub {
 		my $self = shift;
+
 		my $path = $self->src_path();
 		my $container_path = $self->src_container()->path();
+		my $base_path = $self->src_container()->base_path();
 
-		die unless $path =~ s/^\Q$container_path\E(\/|$)/trunk$1/;
+		if (length $container_path) {
+			die "path $path is not within container $container_path" unless (
+				$path =~ s!^\Q$container_path\E(/|$)!./$base_path$1!
+			);
+		}
+		else {
+			substr($path, 0, 0) = "./$base_path/";
+		}
+
+		$path =~ tr[/][/]s;
+		$path =~ s!/+$!!;
+
 		return $path;
 	},
 );

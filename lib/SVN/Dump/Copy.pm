@@ -22,9 +22,11 @@ sub debug {
 	return sprintf(
 		$template,
 		sprintf(
-			"copy from %s \@%s to %s \@%s",
+			"copy from %s r%s (%s) to %s r%s (%s)",
 			$self->src_path(), $self->src_revision(),
+			$self->src_container->debug("%s"),
 			$self->dst_path(), $self->dst_revision(),
+			$self->dst_container->debug("%s"),
 		)
 	)
 }
@@ -52,12 +54,19 @@ has rel_src_path => (
 		#return $path if $self->is_src_container();
 
 		my $container_path = $self->src_container()->path();
+		my $base_path = $self->src_container()->base_path();
 
 		if (length $container_path) {
-			die "$path is not within $container_path" unless (
-				$path =~ s/^\Q$container_path\E(\/|$)/trunk$1/
+			die "path $path is not within container $container_path" unless (
+				$path =~ s!^\Q$container_path\E(/|$)!./$base_path$1!
 			);
 		}
+		else {
+			substr($path, 0, 0) = "./$base_path/";
+		}
+
+		$path =~ tr[/][/]s;
+		$path =~ s!/+$!!;
 
 		return $path;
 	},
@@ -74,8 +83,20 @@ has rel_dst_path => (
 		#return $path if $self->is_dst_container();
 
 		my $container_path = $self->dst_container()->path();
+		my $base_path = $self->dst_container()->base_path();
 
-		die unless $path =~ s/^\Q$container_path\E(\/|$)/trunk$1/;
+		if (length $container_path) {
+			die "path $path is not within container $container_path" unless (
+				$path =~ s!^\Q$container_path\E(/|$)!./$base_path$1!
+			);
+		}
+		else {
+			substr($path, 0, 0) = "./$base_path/";
+		}
+
+		$path =~ tr[/][/]s;
+		$path =~ s!/+$!!;
+
 		return $path;
 	},
 );

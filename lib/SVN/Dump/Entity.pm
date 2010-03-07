@@ -7,12 +7,13 @@ use Carp qw(cluck carp);
 
 use constant DEBUG => 0;
 
-has first_revision_id => ( is => 'rw', isa => 'Int', required => 1 );
-has type              => ( is => 'rw', isa => 'Str', required => 1 );
-has name              => ( is => 'rw', isa => 'Str', required => 1 );
+has first_revision_id => ( is => 'rw', isa => 'Int',  required => 1 );
+has type              => ( is => 'rw', isa => 'Str',  required => 1 );
+has name              => ( is => 'rw', isa => 'Str',  required => 1 );
 has exists            => ( is => 'rw', isa => 'Bool', required => 1 );
-has path              => ( is => 'ro', isa => 'Str', required => 1 );
+has path              => ( is => 'ro', isa => 'Str',  required => 1 );
 has modified          => ( is => 'rw', isa => 'Bool', required => 1 );
+has base_path         => ( is => 'rw', isa => 'Str',  required => 1 );
 
 # Every copy that's sourced directly from this entity.
 has descendents => (
@@ -95,7 +96,8 @@ sub debug {
 	sprintf(
 		$template,
 		$self->type() . " " . $self->name() . " r" .
-		$self->first_revision_id() . " " . $self->path()
+		$self->first_revision_id() . " " . $self->path() . " (base: " .
+		$self->base_path() . ")"
 	);
 }
 
