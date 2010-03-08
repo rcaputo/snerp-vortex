@@ -197,8 +197,6 @@ sub analyze_new_node {
 		return;
 	}
 
-	$self->log("  creates $entity_type $entity_name at $revision");
-
 	# Copy creates a new entity.
 	my $new_entity = SVN::Dump::Entity->new(
 		first_revision_id => $revision,
@@ -209,6 +207,8 @@ sub analyze_new_node {
 		modified          => 0,
 		base_path         => $entity_base,
 	);
+
+	$self->log($new_entity->debug("  creates %s"));
 
 	push @{$self->path_to_entities()->{$path}}, $new_entity;
 	push @{$self->entities_to_fix()}, $new_entity;
@@ -462,15 +462,17 @@ sub calculate_entity {
 
 	return("branch", "proj-$1", "") if $path =~ m!^([^/]+)$!;
 
-#	return("branch", "proj-$1", $2) if (
-#		$path =~ m!^([^/]+)/(trunk|branch(?:es)|tags?)$!
-#	);
-#	return("branch", "proj-$1-branch-$2", "") if (
-#		$path =~ m!^([^/]+)/branch(?:es)?/([^/]+)$!
-#	);
-#	return("tag", "proj-$1-tag-$2", "") if (
-#		$path =~ m!^([^/]+)/tags?/([^/]+)$!
-#	);
+	return("branch", "proj-$1", $2) if (
+		$path =~ m!^([^/]+)/(trunk|branch(?:es)|tags?)$!
+	);
+
+	return("branch", "proj-$1-branch-$2", "") if (
+		$path =~ m!^([^/]+)/branch(?:es)?/([^/]+)$!
+	);
+
+	return("tag", "proj-$1-tag-$2", "") if (
+		$path =~ m!^([^/]+)/tags?/([^/]+)$!
+	);
 
 	# Catch-all.  Must go at the end.
 	return("dir", $path, $path);

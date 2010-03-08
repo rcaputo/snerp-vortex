@@ -67,6 +67,10 @@ after on_revision_done => sub {
 	# Changes are done.  Remember any copy sources that pull from this
 	# revision.  For git, a copy source is a revision SHA1 and
 	# branch-relative path.
+	#
+	# TODO - If the copy source is only used to "branch" or "tag"
+	# something, then we can rename the branch or tag instead of saving
+	# a copy here.
 
 	$self->push_dir($self->replay_base());
 
@@ -76,14 +80,20 @@ after on_revision_done => sub {
 	) {
 		$self->log($copy->debug("CPY) saving %s"));
 
+		# Historical entities are based on non-relative paths.
 		my $src_entity = $self->arborist()->get_historical_entity(
-			$revision_id, $copy->rel_src_path(),
+			$revision_id, $copy->src_path(),
 		);
 
 		# Sanity check.  Copy sources are always branches.
 		# TODO - They could be tags, since tags are just references to
 		# particular moments in time.
 		confess $src_entity->type() unless $src_entity->type() eq "branch";
+
+		# Historical entities are based on non-relative paths.
+		my $dst_entity = $self->arborist()->get_historical_entity(
+			$copy->dst_revision(), $copy->dst_path()
+		);
 
 		my $svn_branch = $src_entity->name();
 		my $git_branch = $self->get_git_branch_name($src_entity);
@@ -101,7 +111,7 @@ after on_revision_done => sub {
 
 		$self->log(
 			"CPY) Copy from ", $src_entity->type(), " ",
-			$src_entity->name(), " ", $copy->src_path(), " at ",
+			$src_entity->name(), " (", $copy->src_path(), ") at r",
 			$copy->src_revision()
 		);
 		$self->log("CPY) descriptor = $copy_depot_descriptor");
