@@ -3,6 +3,8 @@ package SVN::Analysis;
 use Moose;
 use Carp qw(confess);
 
+use XML::LibXML;
+
 use SVN::Analysis::Change::Add;
 use SVN::Analysis::Change::Copy;
 use SVN::Analysis::Change::Delete;
@@ -110,7 +112,41 @@ sub analyze {
 
 sub as_xml_string {
 	my $self = shift;
-	use YAML::Syck; return YAML::Syck::Dump($self);
+
+	my $document = XML::LibXML::Document->new("1.0", "UTF-8");
+
+	my $analysis = $document->createElement("analysis");
+	$document->setDocumentElement($analysis);
+
+	foreach my $path (sort keys %{$self->dir()}) {
+
+		my $directory = $document->createElement("directory");
+		$directory->setAttribute(path => $path);
+
+		$analysis->appendChild($directory);
+
+		foreach my $change (@{$self->dir()->{$path}}) {
+			$directory->appendChild($change->as_xml_element($document));
+		}
+	}
+
+	return $document->toString();
+}
+
+sub init_from_xml_string {
+	my ($self, $xml) = @_;
+
+	my $parser = XML::LibXML->new();
+	my $document = $parser->parse_string($xml);
+
+	foreach my $directory ($document->findnodes("/analysis/directory")) {
+		$self->dir()->{$directory->getAttribute("path")} = [
+			map { SVN::Analysis::Change->new_from_xml_element($_) }
+			$directory->getChildrenByLocalName("change")
+		];
+	}
+
+	return;
 }
 
 ### Internal helpers.

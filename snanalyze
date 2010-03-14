@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 
-# Analyze a subversion dump, and produce an XML file describing its
-# structure.
+# Analyze a subversion dump, and produce an XML file describing the
+# repository's structure over time.
 
 use warnings;
 use strict;
