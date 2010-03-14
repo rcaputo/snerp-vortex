@@ -15,9 +15,6 @@
 #
 # Wouldn't that be nice?
 #
-# TODO - Scroll bars on the TreeView.  Large repositories extend below
-# the bottom of the screen.
-#
 # TODO - Remember state of paths between revisions.  Probably by
 # pushing the state into the SVN::Analysis object.  That way the state
 # may be saved and loaded with the analysis.  The replay phase can
@@ -82,10 +79,10 @@ my ($revision_index, $current_revision);
 my $revision_box = Gtk2::VBox->new(FALSE, 0);
 
 my $revision_label = Gtk2::Label->new("#");
-$revision_box->pack_start($revision_label, 0, 0, 0);
+$revision_box->pack_start($revision_label, FALSE, FALSE, 0);
 
 my $which_label = Gtk2::Label->new("");
-$revision_box->pack_start($which_label, 0, 0, 0);
+$revision_box->pack_start($which_label, FALSE, FALSE, 0);
 
 sub next_revision { set_revision($revision_index + 1) }
 sub prev_revision { set_revision($revision_index - 1) }
@@ -113,7 +110,7 @@ set_revision(0);
 ### Navigation buttons.
 
 my $nav_box = Gtk2::HBox->new(FALSE, 0);
-$v_box->pack_start($nav_box, 0, 0, 0);
+$v_box->pack_start($nav_box, FALSE, FALSE, 0);
 
 my $prev_button = Gtk2::Button->new("<");
 $prev_button->signal_connect(
@@ -123,7 +120,7 @@ $prev_button->signal_connect(
 	}
 );
 
-$nav_box->pack_start($prev_button, 0, 0, 0);
+$nav_box->pack_start($prev_button, FALSE, FALSE, 0);
 
 my $next_button = Gtk2::Button->new(">");
 $next_button->signal_connect(
@@ -133,17 +130,25 @@ $next_button->signal_connect(
 	}
 );
 
-$nav_box->pack_start($next_button, 0, 0, 0);
+$nav_box->pack_start($next_button, FALSE, FALSE, 0);
 
-$nav_box->pack_start($revision_box, 1, 1, 0);
+$nav_box->pack_start($revision_box, TRUE, TRUE, 0);
 
 ### The repository tree.
+
+my $scrolled_window = Gtk2::ScrolledWindow->new(undef, undef);
+$scrolled_window->set_shadow_type("etched-out");
+$scrolled_window->set_policy("automatic", "automatic");
+$scrolled_window->set_size_request(300, 600);
+$scrolled_window->set_border_width(5);
 
 my $repository_tree = Gtk2::Ex::Simple::Tree->new(
 	Path => 'text'
 );
 
-$v_box->pack_start($repository_tree, 1, 1, 0);
+$scrolled_window->add($repository_tree);
+
+$v_box->pack_start($scrolled_window, TRUE, TRUE, 0);
 
 sub populate_tree {
 	my $r = shift;
