@@ -1,0 +1,49 @@
+#!/usr/bin/env perl
+
+# Analyze a subversion dump, and produce an XML file describing its
+# structure.
+
+use warnings;
+use strict;
+use lib qw(./lib);
+
+use Getopt::Long;
+use SVN::Dump::Analyzer;
+
+my $dump_file_name;
+my ($verbose, $help) = (0, 0);
+
+my $getopt_okay = GetOptions(
+	'dump=s',       \$dump_file_name,
+	'verbose',      \$verbose,
+	'help',         \$help,
+);
+
+if ($help or !$getopt_okay) {
+	die(
+		"$0 usage:\n",
+		"  --dump=FILENAME     location of svn dump file to replay\n",
+		"  --verbose           explain what's happening in great detail\n",
+		"  --help              you're soaking in it.\n",
+	);
+}
+
+die "$0: --dump=FILENAME required\n" unless (
+	defined $dump_file_name and length $dump_file_name
+);
+die "$0: --dump path ($dump_file_name) doesn't exist\n" unless (
+	-e $dump_file_name
+);
+die "$0: --dump path ($dump_file_name) must be a file\n" unless (
+	-f $dump_file_name
+);
+
+# Analyze the SVN dump.
+
+my $analyzer = SVN::Dump::Analyzer->new(
+	svn_dump_filename => $dump_file_name,
+	verbose           => $verbose,
+);
+
+$analyzer->walk();
+print $analyzer->analysis()->as_xml_string();
