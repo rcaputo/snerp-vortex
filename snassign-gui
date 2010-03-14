@@ -58,26 +58,28 @@ die "$0: --analysis path ($xml_file_name) must be a file\n" unless (
 	-f $xml_file_name
 );
 
-### Window.
-
-my $window = Gtk2::Window->new('toplevel');
-
-### Vertical layout box.
-
-my $v_box = Gtk2::VBox->new(0, 0);
-$window->add($v_box);
-
-### Subversion analysis.
+### Load the Subversion analysis.
 
 my $analysis = SVN::Analysis->new();
 $analysis->init_from_xml_file($xml_file_name);
 
-### Revisions and the revision label.
+### Window.
+
+my $window = Gtk2::Window->new('toplevel');
+$window->signal_connect('delete_event' => sub { Gtk2->main_quit; });
+$window->set_border_width(5);
+
+### Vertical layout box.
+
+my $v_box = Gtk2::VBox->new(FALSE, 0);
+$window->add($v_box);
+
+### Revisions and the revision labels.
 
 my @revisions = $analysis->significant_revisions();
 my ($revision_index, $current_revision);
 
-my $revision_box = Gtk2::VBox->new(0, 0);
+my $revision_box = Gtk2::VBox->new(FALSE, 0);
 
 my $revision_label = Gtk2::Label->new("#");
 $revision_box->pack_start($revision_label, 0, 0, 0);
@@ -110,7 +112,7 @@ set_revision(0);
 
 ### Navigation buttons.
 
-my $nav_box = Gtk2::HBox->new(0, 0);
+my $nav_box = Gtk2::HBox->new(FALSE, 0);
 $v_box->pack_start($nav_box, 0, 0, 0);
 
 my $prev_button = Gtk2::Button->new("<");
@@ -134,15 +136,6 @@ $next_button->signal_connect(
 $nav_box->pack_start($next_button, 0, 0, 0);
 
 $nav_box->pack_start($revision_box, 1, 1, 0);
-
-### Quit button.
-
-my $quit_button = Gtk2::Button->new('Quit');
-$quit_button->signal_connect(
-	clicked => sub { Gtk2->main_quit() }
-);
-
-$v_box->pack_start($quit_button, 0, 0, 0);
 
 ### The repository tree.
 
