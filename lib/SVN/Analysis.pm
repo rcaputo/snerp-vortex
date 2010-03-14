@@ -133,12 +133,94 @@ sub as_xml_string {
 	return $document->toString();
 }
 
+# Return the IDs of significant revisions, in chronological order.
+sub significant_revisions {
+	my $self = shift;
+	return(
+		sort { $a <=> $b }
+		keys %{
+			{
+				map { ($_->revision(), 1) }
+				grep { !$_->is_touch() }
+				map { @$_ } values %{$self->dir()}
+			}
+		}
+	);
+}
+
+sub as_gtk_ex_simple_tree_then {
+	my ($self, $revision) = @_;
+
+	my $root = "(repository)";
+
+	my $tree = {
+		value => [ $root ],
+		children => [ ],
+	};
+
+	foreach my $path (
+		sort { (length($b) <=> length($a)) || ($b cmp $a) }
+		keys %{$self->dir()}
+	) {
+		next unless $self->path_exists_then($revision, $path);
+
+		my $iter = $tree;
+
+		foreach my $segment (split m!/!, $path) {
+			my @candidates = (
+				grep { $_->{value}[0] eq $segment }
+				@{$iter->{children}}
+			);
+
+			die "$segment = @candidates" if @candidates > 1;
+
+			unless (@candidates) {
+				my $new = {
+					value => [ $segment ],
+					children => [ ],
+				};
+
+				push @{$iter->{children}}, $new;
+
+				$iter = $new;
+				next;
+			}
+
+			$iter = $candidates[0];
+		}
+	}
+
+	# Traverse the tree, sorting the children by name.
+	my @pending = ($tree);
+	while (@pending) {
+		my $iter = shift @pending;
+		push(
+			@pending, @{
+				$iter->{children} = [
+					sort { $a->{value}[0] cmp $b->{value}[0] }
+					@{$iter->{children}}
+				]
+			}
+		);
+	}
+
+	return $tree;
+}
+
+sub init_from_xml_file {
+	my ($self, $filename) = @_;
+	$self->init_from_xml_document(XML::LibXML->load_xml(location => $filename));
+	return;
+}
+
 sub init_from_xml_string {
 	my ($self, $xml) = @_;
+	$self->init_from_xml_document(XML::LibXML->load_xml(string => $xml));
+	return;
+}
 
-	my $parser = XML::LibXML->new();
-	my $document = $parser->parse_string($xml);
-
+sub init_from_xml_document {
+	my ($self, $document) = @_;
 	foreach my $directory ($document->findnodes("/analysis/directory")) {
 		$self->dir()->{$directory->getAttribute("path")} = [
 			map { SVN::Analysis::Change->new_from_xml_element($_) }
