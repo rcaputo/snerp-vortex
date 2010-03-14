@@ -29,7 +29,6 @@ use SVN::Analysis;
 
 use Glib qw(TRUE FALSE);
 use Gtk2 '-init';
-use Gtk2::Ex::Simple::Tree;
 
 my ($help, $xml_file_name);
 my $getopt_okay = GetOptions(
@@ -134,30 +133,68 @@ $nav_box->pack_start($next_button, FALSE, FALSE, 0);
 
 $nav_box->pack_start($revision_box, TRUE, TRUE, 0);
 
-### The repository tree.
+### Scrolled window to hold the tree view.
 
+# Exists in a scrolled window, with a minimum size.
 my $scrolled_window = Gtk2::ScrolledWindow->new(undef, undef);
 $scrolled_window->set_shadow_type("etched-out");
 $scrolled_window->set_policy("automatic", "automatic");
 $scrolled_window->set_size_request(300, 600);
 $scrolled_window->set_border_width(5);
 
-my $repository_tree = Gtk2::Ex::Simple::Tree->new(
-	Path => 'text'
-);
-
-$scrolled_window->add($repository_tree);
-
 $v_box->pack_start($scrolled_window, TRUE, TRUE, 0);
 
+### Tree view.
+
+# Column 0 is a Glib::String.
+my $tree_store = Gtk2::TreeStore->new('Glib::String');
+
+# Create a TreeView for the TreeStore.
+my $tree_view = Gtk2::TreeView->new($tree_store);
+
+# Path names column.
+{
+	my $tree_column = Gtk2::TreeViewColumn->new();
+
+	# Paths will be rendered as text.
+	my $renderer = Gtk2::CellRendererText->new();
+	$tree_column->pack_start($renderer, FALSE);
+
+	# The tree column's text will be read from column 0 of the TreeStore.
+	$tree_column->add_attribute($renderer, text => 0);
+
+	# Append the column to the tree view, and set some attributes.
+	$tree_view->append_column($tree_column);
+}
+
+# Column 0 is searchable and sortable by clicking the header.
+$tree_view->set_search_column(0);
+
+$scrolled_window->add($tree_view);
+
+sub _populate_tree_recursive {
+	my ($parent_iter, $tree_node) = @_;
+
+	my $iter = $tree_store->append($parent_iter);
+	$tree_store->set(
+		$iter,
+		0 => $tree_node->{node}{name},
+	);
+
+	_populate_tree_recursive($iter, $_) foreach @{$tree_node->{children}};
+}
+
 sub populate_tree {
-	my $r = shift;
-	@{$repository_tree->{data}} = $analysis->as_gtk_ex_simple_tree_then($r);
-	$repository_tree->expand_all();
+	my $revision = shift;
+	my $tree = $analysis->as_tree_then($revision);
+
+	$tree_store->clear();
+	_populate_tree_recursive(undef, $tree);
+
+	$tree_view->expand_all();
 }
 
 populate_tree($current_revision);
-
 
 $window->show_all();
 
