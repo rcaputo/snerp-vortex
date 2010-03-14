@@ -1,0 +1,1 @@
+exec gvim snanalyze snerp `find lib -name '*.pm'`
