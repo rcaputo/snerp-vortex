@@ -148,27 +148,26 @@ sub significant_revisions {
 	);
 }
 
-sub as_gtk_ex_simple_tree_then {
+sub as_tree_then {
 	my ($self, $revision) = @_;
 
 	my $root = "(repository)";
 
 	my $tree = {
-		value => [ $root ],
-		children => [ ],
+		node      => { name => $root },
+		children  => [ ],
 	};
 
 	foreach my $path (
 		sort { (length($b) <=> length($a)) || ($b cmp $a) }
+		grep { $self->path_exists_then($revision, $_) }
 		keys %{$self->dir()}
 	) {
-		next unless $self->path_exists_then($revision, $path);
-
 		my $iter = $tree;
 
 		foreach my $segment (split m!/!, $path) {
 			my @candidates = (
-				grep { $_->{value}[0] eq $segment }
+				grep { $_->{node}{name} eq $segment }
 				@{$iter->{children}}
 			);
 
@@ -176,7 +175,7 @@ sub as_gtk_ex_simple_tree_then {
 
 			unless (@candidates) {
 				my $new = {
-					value => [ $segment ],
+					node     => { name => $segment },
 					children => [ ],
 				};
 
@@ -197,7 +196,7 @@ sub as_gtk_ex_simple_tree_then {
 		push(
 			@pending, @{
 				$iter->{children} = [
-					sort { $a->{value}[0] cmp $b->{value}[0] }
+					sort { $a->{node}{name} cmp $b->{node}{name} }
 					@{$iter->{children}}
 				]
 			}
