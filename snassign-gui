@@ -80,11 +80,13 @@ my $revision_box = Gtk2::VBox->new(FALSE, 0);
 my $revision_label = Gtk2::Label->new("#");
 $revision_box->pack_start($revision_label, FALSE, FALSE, 0);
 
-my $which_label = Gtk2::Label->new("");
-$revision_box->pack_start($which_label, FALSE, FALSE, 0);
+my $progress_label = Gtk2::Label->new("%");
+$revision_box->pack_start($progress_label, FALSE, FALSE, 0);
 
-sub next_revision { set_revision($revision_index + 1) }
-sub prev_revision { set_revision($revision_index - 1) }
+sub next_revision   { set_revision($revision_index + 1) }
+sub prev_revision   { set_revision($revision_index - 1) }
+sub first_revision  { set_revision(0) }
+sub last_revision   { set_revision($#revisions) }
 
 sub set_revision {
 	my $i = shift;
@@ -97,19 +99,27 @@ sub set_revision {
 
 	$revision_label->set_text("Revision $current_revision");
 
-	my $which = "";
-	$which .= " (first)" if $i == 0;
-	$which .= " (last)"  if $i == $#revisions;
-
-	$which_label->set_text($which);
+	$progress_label->set_text(
+		sprintf("%.2f%%", 100 * ($current_revision / ($revisions[-1] || 1)))
+	);
 }
 
-set_revision(0);
+first_revision();
 
 ### Navigation buttons.
 
 my $nav_box = Gtk2::HBox->new(FALSE, 0);
 $v_box->pack_start($nav_box, FALSE, FALSE, 0);
+
+my $first_button = Gtk2::Button->new("<<");
+$first_button->signal_connect(
+	clicked => sub {
+		first_revision();
+		populate_tree($current_revision);
+	}
+);
+
+$nav_box->pack_start($first_button, FALSE, FALSE, 0);
 
 my $prev_button = Gtk2::Button->new("<");
 $prev_button->signal_connect(
@@ -129,7 +139,17 @@ $next_button->signal_connect(
 	}
 );
 
+my $last_button = Gtk2::Button->new(">>");
+$last_button->signal_connect(
+	clicked => sub {
+		last_revision();
+		populate_tree($current_revision);
+	}
+);
+
 $nav_box->pack_start($next_button, FALSE, FALSE, 0);
+
+$nav_box->pack_start($last_button, FALSE, FALSE, 0);
 
 $nav_box->pack_start($revision_box, TRUE, TRUE, 0);
 
@@ -155,6 +175,7 @@ my $tree_view = Gtk2::TreeView->new($tree_store);
 # Path names column.
 {
 	my $tree_column = Gtk2::TreeViewColumn->new();
+	$tree_column->set_title("Path");
 
 	# Paths will be rendered as text.
 	my $renderer = Gtk2::CellRendererText->new();
@@ -186,11 +207,11 @@ sub _populate_tree_recursive {
 
 sub populate_tree {
 	my $revision = shift;
+
 	my $tree = $analysis->as_tree_then($revision);
 
 	$tree_store->clear();
 	_populate_tree_recursive(undef, $tree);
-
 	$tree_view->expand_all();
 }
 
