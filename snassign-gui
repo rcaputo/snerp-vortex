@@ -159,7 +159,7 @@ $nav_box->pack_start($revision_box, TRUE, TRUE, 0);
 my $scrolled_window = Gtk2::ScrolledWindow->new(undef, undef);
 $scrolled_window->set_shadow_type("etched-out");
 $scrolled_window->set_policy("automatic", "automatic");
-$scrolled_window->set_size_request(300, 600);
+$scrolled_window->set_size_request(750, 550);
 $scrolled_window->set_border_width(5);
 
 $v_box->pack_start($scrolled_window, TRUE, TRUE, 0);
@@ -167,7 +167,12 @@ $v_box->pack_start($scrolled_window, TRUE, TRUE, 0);
 ### Tree view.
 
 # Column 0 is a Glib::String.
-my $tree_store = Gtk2::TreeStore->new('Glib::String');
+my $tree_store = Gtk2::TreeStore->new(
+	'Glib::String',
+	'Glib::String',
+	'Glib::String',
+	'Glib::String',
+);
 
 # Create a TreeView for the TreeStore.
 my $tree_view = Gtk2::TreeView->new($tree_store);
@@ -188,6 +193,30 @@ my $tree_view = Gtk2::TreeView->new($tree_store);
 	$tree_view->append_column($tree_column);
 }
 
+# Branch type column.
+{
+	my $tree_column = Gtk2::TreeViewColumn->new();
+	$tree_column->set_title("Type");
+
+	my $renderer = Gtk2::CellRendererText->new();
+	$tree_column->pack_start($renderer, FALSE);
+	$tree_column->add_attribute($renderer, text => 1);
+
+	$tree_view->append_column($tree_column);
+}
+
+# Branch name column.
+{
+	my $tree_column = Gtk2::TreeViewColumn->new();
+	$tree_column->set_title("Name");
+
+	my $renderer = Gtk2::CellRendererText->new();
+	$tree_column->pack_start($renderer, FALSE);
+	$tree_column->add_attribute($renderer, text => 2);
+
+	$tree_view->append_column($tree_column);
+}
+
 # Column 0 is searchable and sortable by clicking the header.
 $tree_view->set_search_column(0);
 
@@ -200,6 +229,8 @@ sub _populate_tree_recursive {
 	$tree_store->set(
 		$iter,
 		0 => $tree_node->{node}{name},
+		1 => $tree_node->{node}{entity_type},
+		2 => $tree_node->{node}{entity_name},
 	);
 
 	_populate_tree_recursive($iter, $_) foreach @{$tree_node->{children}};

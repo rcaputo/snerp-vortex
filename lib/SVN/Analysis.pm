@@ -161,8 +161,6 @@ sub analyze {
 		);
 
 		foreach my $change (@$changes) {
-			next unless $change->is_add();
-
 			$change->entity_type($entity_type);
 			$change->entity_name($entity_name);
 			$change->relocate_path($relocate_path);
@@ -201,7 +199,7 @@ sub significant_revisions {
 		keys %{
 			{
 				map { ($_->revision(), 1) }
-				grep { !$_->is_touch() }
+				grep { $_->is_add() }
 				map { @$_ } values %{$self->dir()}
 			}
 		}
@@ -211,19 +209,25 @@ sub significant_revisions {
 sub as_tree_then {
 	my ($self, $revision) = @_;
 
-	my $root = "(repository)";
+	my $root_name = "(repository)";
+	my $root_node = $self->dir()->{""}->[0];
 
 	my $tree = {
-		node      => { name => $root },
+		node      => {
+			name          => $root_name,
+			path          => "",
+			entity_type   => $root_node->entity_type(),
+			entity_name   => $root_node->entity_name(),
+			relocate_path => $root_node->relocate_path(),
+		},
 		children  => [ ],
 	};
 
-	foreach my $path (
-		sort { (length($b) <=> length($a)) || ($b cmp $a) }
-		grep { $self->path_exists_then($revision, $_) }
-		keys %{$self->dir()}
-	) {
+	foreach my $path ($self->get_tree_paths_then($revision, "")) {
 		my $iter = $tree;
+
+		my $path_then = $self->path_as_then($revision, $path);
+		die "wtf" unless $path_then->exists();
 
 		foreach my $segment (split m!/!, $path) {
 			my @candidates = (
@@ -235,7 +239,13 @@ sub as_tree_then {
 
 			unless (@candidates) {
 				my $new = {
-					node     => { name => $segment },
+					node     => {
+						name          => $segment,
+						path          => $path,
+						entity_type   => $path_then->entity_type(),
+						entity_name   => $path_then->entity_name(),
+						relocate_path => $path_then->relocate_path(),
+					},
 					children => [ ],
 				};
 
@@ -318,6 +328,25 @@ sub path_exists_then {
 	return;
 }
 
+sub path_as_then {
+	my ($self, $revision, $path) = @_;
+
+	# Path doesn't exist.
+	return unless exists $self->dir()->{$path};
+
+	my $changes = $self->dir()->{$path};
+	my $i = @$changes;
+
+	while ($i--) {
+		next if $changes->[$i]->revision() > $revision;
+		return unless $changes->[$i]->exists();
+		return $changes->[$i];
+	}
+
+	# Doesn't exist.
+	return;
+}
+
 sub touch_directory {
 	my ($self, $revision, $path) = @_;
 
@@ -360,7 +389,7 @@ sub get_tree_paths_now {
 	return(
 		sort { (length($a) <=> length($b)) || ($a cmp $b) }
 		grep { $self->path_exists_now($_) }
-		grep /^\Q$path\E(\/|$)/,
+		grep { (length($path) == 0) || /^\Q$path\E(\/|$)/ }
 		keys %{$self->dir()}
 	);
 }
@@ -370,7 +399,7 @@ sub get_tree_paths_then {
 	return(
 		sort { (length($a) <=> length($b)) || ($a cmp $b) }
 		grep { $self->path_exists_then($revision, $_) }
-		grep /^\Q$path\E(\/|$)/,
+		grep { (length($path) == 0) || /^\Q$path\E(\/|$)/ }
 		keys %{$self->dir()}
 	);
 }
