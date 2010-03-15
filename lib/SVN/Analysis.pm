@@ -31,8 +31,8 @@ sub consider_add {
 
 	# Add unconditionally.
 	push @{$self->dir()->{$path}}, SVN::Analysis::Change::Add->new(
-		revision        => $revision,
-		canonical_path  => $path,
+		revision      => $revision,
+		relocate_path => $path,
 	);
 
 	return;
@@ -67,10 +67,10 @@ sub consider_copy {
 		push(
 			@{$self->dir()->{$relocated_path}},
 			SVN::Analysis::Change::Copy->new(
-				revision        => $dst_revision,
-				src_path        => $path_to_copy,
-				src_revision    => $src_revision,
-				canonical_path  => $relocated_path,
+				revision      => $dst_revision,
+				src_path      => $path_to_copy,
+				src_revision  => $src_revision,
+				relocate_path => $relocated_path,
 			)
 		);
 
@@ -101,8 +101,8 @@ sub consider_delete {
 		pop @$path_rec if $path_rec->[-1]->is_touch();
 
 		push @$path_rec, SVN::Analysis::Change::Delete->new(
-			revision        => $revision,
-			canonical_path  => $path_to_delete,
+			revision      => $revision,
+			relocate_path => $path_to_delete,
 		);
 	}
 
@@ -210,16 +210,11 @@ sub as_tree_then {
 	my ($self, $revision) = @_;
 
 	my $root_name = "(repository)";
-	my $root_node = $self->dir()->{""}->[0];
+	my $root_node = $self->path_as_then($revision, "");
 
 	my $tree = {
-		node      => {
-			name          => $root_name,
-			path          => "",
-			entity_type   => $root_node->entity_type(),
-			entity_name   => $root_node->entity_name(),
-			relocate_path => $root_node->relocate_path(),
-		},
+		node      => $root_node,
+		name      => $root_name,
 		children  => [ ],
 	};
 
@@ -231,7 +226,7 @@ sub as_tree_then {
 
 		foreach my $segment (split m!/!, $path) {
 			my @candidates = (
-				grep { $_->{node}{name} eq $segment }
+				grep { $_->{name} eq $segment }
 				@{$iter->{children}}
 			);
 
@@ -239,14 +234,9 @@ sub as_tree_then {
 
 			unless (@candidates) {
 				my $new = {
-					node     => {
-						name          => $segment,
-						path          => $path,
-						entity_type   => $path_then->entity_type(),
-						entity_name   => $path_then->entity_name(),
-						relocate_path => $path_then->relocate_path(),
-					},
-					children => [ ],
+					node      => $path_then,
+					name      => $segment,
+					children  => [ ],
 				};
 
 				push @{$iter->{children}}, $new;
@@ -266,7 +256,7 @@ sub as_tree_then {
 		push(
 			@pending, @{
 				$iter->{children} = [
-					sort { $a->{node}{name} cmp $b->{node}{name} }
+					sort { $a->{name} cmp $b->{name} }
 					@{$iter->{children}}
 				]
 			}
@@ -369,8 +359,8 @@ sub touch_directory {
 
 		# Record a distinct touch.
 		push @$path_rec, SVN::Analysis::Change::Touch->new(
-			revision        => $revision,
-			canonical_path  => $container_path,
+			revision      => $revision,
+			relocate_path => $container_path,
 		);
 	}
 

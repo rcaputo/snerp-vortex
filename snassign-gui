@@ -177,7 +177,7 @@ my $tree_store = Gtk2::TreeStore->new(
 # Create a TreeView for the TreeStore.
 my $tree_view = Gtk2::TreeView->new($tree_store);
 
-# Path names column.
+# 0: Path names column.
 {
 	my $tree_column = Gtk2::TreeViewColumn->new();
 	$tree_column->set_title("Path");
@@ -193,7 +193,7 @@ my $tree_view = Gtk2::TreeView->new($tree_store);
 	$tree_view->append_column($tree_column);
 }
 
-# Branch type column.
+# 1: Branch type column.
 {
 	my $tree_column = Gtk2::TreeViewColumn->new();
 	$tree_column->set_title("Type");
@@ -205,7 +205,7 @@ my $tree_view = Gtk2::TreeView->new($tree_store);
 	$tree_view->append_column($tree_column);
 }
 
-# Branch name column.
+# 2: Branch name column.
 {
 	my $tree_column = Gtk2::TreeViewColumn->new();
 	$tree_column->set_title("Name");
@@ -213,6 +213,18 @@ my $tree_view = Gtk2::TreeView->new($tree_store);
 	my $renderer = Gtk2::CellRendererText->new();
 	$tree_column->pack_start($renderer, FALSE);
 	$tree_column->add_attribute($renderer, text => 2);
+
+	$tree_view->append_column($tree_column);
+}
+
+# 3: Relocated path column.
+{
+	my $tree_column = Gtk2::TreeViewColumn->new();
+	$tree_column->set_title("Relocated");
+
+	my $renderer = Gtk2::CellRendererText->new();
+	$tree_column->pack_start($renderer, FALSE);
+	$tree_column->add_attribute($renderer, text => 3);
 
 	$tree_view->append_column($tree_column);
 }
@@ -228,9 +240,10 @@ sub _populate_tree_recursive {
 	my $iter = $tree_store->append($parent_iter);
 	$tree_store->set(
 		$iter,
-		0 => $tree_node->{node}{name},
-		1 => $tree_node->{node}{entity_type},
-		2 => $tree_node->{node}{entity_name},
+		0 => $tree_node->{name},
+		1 => $tree_node->{node}->entity_type(),
+		2 => $tree_node->{node}->entity_name(),
+		3 => $tree_node->{node}->relocate_path(),
 	);
 
 	_populate_tree_recursive($iter, $_) foreach @{$tree_node->{children}};
@@ -243,6 +256,8 @@ sub populate_tree {
 
 	$tree_store->clear();
 	_populate_tree_recursive(undef, $tree);
+
+	# TODO - Expand only branches and tags, not directories.
 	$tree_view->expand_all();
 }
 
