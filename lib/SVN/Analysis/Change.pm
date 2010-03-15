@@ -2,7 +2,13 @@ package SVN::Analysis::Change;
 
 use Moose;
 
-has revision  => ( is => 'rw', isa => 'Int', required => 1 );
+has revision => ( is => 'rw', isa => 'Int', required => 1 );
+
+sub is_add    { 0 }
+sub is_copy   { 0 }
+sub is_delete { 0 }
+sub is_touch  { 0 }
+sub exists    { 0 }
 
 sub as_xml_element {
 	my ($self, $document) = @_;

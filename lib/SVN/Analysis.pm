@@ -31,8 +31,10 @@ sub consider_add {
 
 	# Add unconditionally.
 	push @{$self->dir()->{$path}}, SVN::Analysis::Change::Add->new(
-		revision => $revision,
+		revision        => $revision,
+		canonical_path  => $path,
 	);
+
 	return;
 }
 
@@ -65,9 +67,10 @@ sub consider_copy {
 		push(
 			@{$self->dir()->{$relocated_path}},
 			SVN::Analysis::Change::Copy->new(
-				revision      => $dst_revision,
-				src_path      => $path_to_copy,
-				src_revision  => $src_revision,
+				revision        => $dst_revision,
+				src_path        => $path_to_copy,
+				src_revision    => $src_revision,
+				canonical_path  => $relocated_path,
 			)
 		);
 
@@ -98,16 +101,73 @@ sub consider_delete {
 		pop @$path_rec if $path_rec->[-1]->is_touch();
 
 		push @$path_rec, SVN::Analysis::Change::Delete->new(
-			revision => $revision,
+			revision        => $revision,
+			canonical_path  => $path_to_delete,
 		);
 	}
 
 	return;
 }
 
+sub get_entity_hint {
+	my ($self, $path) = @_;
+
+	$path = "" unless defined $path;
+
+	# Empty path name.
+	return("branch", "trunk", "") unless defined $path and length $path;
+
+	# Special top-level paths.
+	return("branch", "trunk", $1) if (
+		$path =~ m!^(trunk|tags?|branch(?:es)?)$!
+	);
+
+	# Branches and tags.
+	return("branch", "branch-$1", "trunk") if (
+		$path =~ m!^branch(?:es)?/([^/]+)/?$!
+	);
+	return("tag", "tag-$1", "trunk") if (
+		$path =~ m!^tags?/([^/]+)/?$!
+	);
+
+	# Project directories.
+	# TODO - Not well tested!
+
+	return("branch", "proj-$1", "") if $path =~ m!^([^/]+)$!;
+
+	return("branch", "proj-$1", $2) if (
+		$path =~ m!^([^/]+)/(trunk|branch(?:es)|tags?)$!
+	);
+
+	return("branch", "proj-$1-branch-$2", "") if (
+		$path =~ m!^([^/]+)/branch(?:es)?/([^/]+)$!
+	);
+
+	return("tag", "proj-$1-tag-$2", "") if (
+		$path =~ m!^([^/]+)/tags?/([^/]+)$!
+	);
+
+	# Catch-all.  Must go at the end.
+	return("dir", $path, $path);
+}
+
 sub analyze {
 	my $self = shift;
-	return;
+
+	my $dir = $self->dir();
+	while (my ($path, $changes) = each %$dir) {
+		my ($entity_type, $entity_name, $relocate_path) = $self->get_entity_hint(
+			$path
+		);
+
+		foreach my $change (@$changes) {
+			next unless $change->is_add();
+
+			$change->entity_type($entity_type);
+			$change->entity_name($entity_name);
+			$change->relocate_path($relocate_path);
+		}
+	}
 }
 
 sub as_xml_string {
@@ -280,7 +340,8 @@ sub touch_directory {
 
 		# Record a distinct touch.
 		push @$path_rec, SVN::Analysis::Change::Touch->new(
-			revision => $revision,
+			revision        => $revision,
+			canonical_path  => $container_path,
 		);
 	}
 
