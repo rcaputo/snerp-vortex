@@ -32,7 +32,9 @@ sub consider_add {
 	# Add unconditionally.
 	push @{$self->dir()->{$path}}, SVN::Analysis::Change::Add->new(
 		revision      => $revision,
-		relocate_path => $path,
+		path          => $path,
+		path_lop      => "",
+		path_prepend  => "",
 	);
 
 	return;
@@ -70,7 +72,9 @@ sub consider_copy {
 				revision      => $dst_revision,
 				src_path      => $path_to_copy,
 				src_revision  => $src_revision,
-				relocate_path => $relocated_path,
+				path          => $relocated_path,
+				path_lop      => "",
+				path_prepend  => "",
 			)
 		);
 
@@ -102,7 +106,9 @@ sub consider_delete {
 
 		push @$path_rec, SVN::Analysis::Change::Delete->new(
 			revision      => $revision,
-			relocate_path => $path_to_delete,
+			path          => $path_to_delete,
+			path_lop      => "",
+			path_prepend  => "",
 		);
 	}
 
@@ -114,41 +120,45 @@ sub get_entity_hint {
 
 	$path = "" unless defined $path;
 
-	# Empty path name.
-	return("branch", "trunk", "") unless defined $path and length $path;
+	# Project root.
+	#return("branch", "proj-root", "", "") unless defined $path and length $path;
 
-	# Special top-level paths.
-	return("branch", "trunk", $1) if (
-		$path =~ m!^(trunk|tags?|branch(?:es)?)$!
+	# Special top-level paths.  Nothing to do.
+	#	return("branch", "proj-root", "", "") if (
+	#		$path =~ m!^(trunk|tags?|branch(?:es)?)$!
+	#	);
+
+	# Trunk.
+	return("branch", "trunk", $1, "") if (
+		$path =~ m!^(trunk/)!
 	);
 
 	# Branches and tags.
-	return("branch", "branch-$1", "trunk") if (
-		$path =~ m!^branch(?:es)?/([^/]+)/?$!
+	return("branch", "branch-$2", $1, "") if (
+		$path =~ m!^(branch(?:es)?/([^/]+)/)!
 	);
-	return("tag", "tag-$1", "trunk") if (
-		$path =~ m!^tags?/([^/]+)/?$!
+	return("tag", "tag-$2", $1, "") if (
+		$path =~ m!^(tags?/([^/]+)/)!
 	);
+
+	# Special project paths.  Nothing to do.
+	#	return("branch", "proj-root", "", "") if (
+	#		$path =~ m!^[^/]+/(trunk|tags?|branch(?:es)?)$!
+	#	);
 
 	# Project directories.
-	# TODO - Not well tested!
-
-	return("branch", "proj-$1", "") if $path =~ m!^([^/]+)$!;
-
-	return("branch", "proj-$1", $2) if (
-		$path =~ m!^([^/]+)/(trunk|branch(?:es)|tags?)$!
+	return("branch", "proj-$2", $1, "") if (
+		$path =~ m!^(([^/]+)/trunk/)!
 	);
-
-	return("branch", "proj-$1-branch-$2", "") if (
-		$path =~ m!^([^/]+)/branch(?:es)?/([^/]+)$!
+	return("branch", "proj-$2-branch-$3", $1, "") if (
+		$path =~ m!^(([^/]+)/branch(?:es)?/([^/]+)/)!
 	);
-
-	return("tag", "proj-$1-tag-$2", "") if (
-		$path =~ m!^([^/]+)/tags?/([^/]+)$!
+	return("tag", "proj-$2-tag-$3", "$1", "") if (
+		$path =~ m!^(([^/]+)/tags?/([^/]+)/)!
 	);
 
 	# Catch-all.  Must go at the end.
-	return("dir", $path, $path);
+	return("branch", "proj-root", "", "");
 }
 
 sub analyze {
@@ -156,14 +166,15 @@ sub analyze {
 
 	my $dir = $self->dir();
 	while (my ($path, $changes) = each %$dir) {
-		my ($entity_type, $entity_name, $relocate_path) = $self->get_entity_hint(
-			$path
+		my ($entity_type, $entity_name, $path_lop, $path_prepend) = (
+			$self->get_entity_hint($path)
 		);
 
 		foreach my $change (@$changes) {
 			$change->entity_type($entity_type);
 			$change->entity_name($entity_name);
-			$change->relocate_path($relocate_path);
+			$change->path_lop($path_lop);
+			$change->path_prepend($path_prepend);
 		}
 	}
 }
@@ -360,7 +371,9 @@ sub touch_directory {
 		# Record a distinct touch.
 		push @$path_rec, SVN::Analysis::Change::Touch->new(
 			revision      => $revision,
-			relocate_path => $container_path,
+			path          => $container_path,
+			path_lop      => "",
+			path_prepend  => "",
 		);
 	}
 

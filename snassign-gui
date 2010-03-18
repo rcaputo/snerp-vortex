@@ -57,7 +57,11 @@ die "$0: --analysis path ($xml_file_name) must be a file\n" unless (
 ### Load the Subversion analysis.
 
 my $analysis = SVN::Analysis->new();
+warn time(), " loading xml...\n";
 $analysis->init_from_xml_file($xml_file_name);
+warn time(), " analyzing...\n";
+$analysis->analyze();
+warn time(), " done.\n";
 
 ### Window.
 
@@ -173,6 +177,8 @@ my $tree_store = Gtk2::TreeStore->new(
 	'Glib::String',
 	'Glib::String',
 	'Glib::String',
+	'Glib::String',
+	'Glib::String',
 );
 
 # Create a TreeView for the TreeStore.
@@ -230,14 +236,38 @@ my $tree_view = Gtk2::TreeView->new($tree_store);
 	$tree_view->append_column($tree_column);
 }
 
-# 4: Relocated path column.
+# 4: Prefix to remove.
+{
+	my $tree_column = Gtk2::TreeViewColumn->new();
+	$tree_column->set_title("Remove");
+
+	my $renderer = Gtk2::CellRendererText->new();
+	$tree_column->pack_start($renderer, FALSE);
+	$tree_column->add_attribute($renderer, text => 4);
+
+	$tree_view->append_column($tree_column);
+}
+
+# 4: Prefix to add.
+{
+	my $tree_column = Gtk2::TreeViewColumn->new();
+	$tree_column->set_title("Prefix");
+
+	my $renderer = Gtk2::CellRendererText->new();
+	$tree_column->pack_start($renderer, FALSE);
+	$tree_column->add_attribute($renderer, text => 5);
+
+	$tree_view->append_column($tree_column);
+}
+
+# 5: Relocated path column.
 {
 	my $tree_column = Gtk2::TreeViewColumn->new();
 	$tree_column->set_title("Relocated");
 
 	my $renderer = Gtk2::CellRendererText->new();
 	$tree_column->pack_start($renderer, FALSE);
-	$tree_column->add_attribute($renderer, text => 4);
+	$tree_column->add_attribute($renderer, text => 6);
 
 	$tree_view->append_column($tree_column);
 }
@@ -271,7 +301,9 @@ sub _populate_tree_recursive {
 		),
 		2 => $node->entity_type(),
 		3 => $node->entity_name(),
-		4 => $node->relocate_path(),
+		4 => $node->path_lop(),
+		5 => $node->path_prepend(),
+		6 => $node->relocated_path(),
 	);
 
 	_populate_tree_recursive($revision, $iter, $_) foreach (
