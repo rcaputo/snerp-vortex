@@ -130,15 +130,15 @@ sub get_entity_hint {
 
 	# Trunk.
 	return("branch", "trunk", $1, "") if (
-		$path =~ m!^(trunk/)!
+		$path =~ m!^(trunk(?:/|$))!
 	);
 
 	# Branches and tags.
 	return("branch", "branch-$2", $1, "") if (
-		$path =~ m!^(branch(?:es)?/([^/]+)/)!
+		$path =~ m!^(branch(?:es)?/([^/]+)(?:/|$))!
 	);
 	return("tag", "tag-$2", $1, "") if (
-		$path =~ m!^(tags?/([^/]+)/)!
+		$path =~ m!^(tags?/([^/]+)(?:/|$))!
 	);
 
 	# Special project paths.  Nothing to do.
@@ -148,13 +148,13 @@ sub get_entity_hint {
 
 	# Project directories.
 	return("branch", "proj-$2", $1, "") if (
-		$path =~ m!^(([^/]+)/trunk/)!
+		$path =~ m!^(([^/]+)/trunk(?:/|$))!
 	);
 	return("branch", "proj-$2-branch-$3", $1, "") if (
-		$path =~ m!^(([^/]+)/branch(?:es)?/([^/]+)/)!
+		$path =~ m!^(([^/]+)/branch(?:es)?/([^/]+)(?:/|$))!
 	);
 	return("tag", "proj-$2-tag-$3", "$1", "") if (
-		$path =~ m!^(([^/]+)/tags?/([^/]+)/)!
+		$path =~ m!^(([^/]+)/tags?/([^/]+)(?:/|$))!
 	);
 
 	# Catch-all.  Must go at the end.
