@@ -172,6 +172,7 @@ my $tree_store = Gtk2::TreeStore->new(
 	'Glib::String',
 	'Glib::String',
 	'Glib::String',
+	'Glib::String',
 );
 
 # Create a TreeView for the TreeStore.
@@ -193,10 +194,10 @@ my $tree_view = Gtk2::TreeView->new($tree_store);
 	$tree_view->append_column($tree_column);
 }
 
-# 1: Branch type column.
+# 1: Creation operation.
 {
 	my $tree_column = Gtk2::TreeViewColumn->new();
-	$tree_column->set_title("Type");
+	$tree_column->set_title("Op");
 
 	my $renderer = Gtk2::CellRendererText->new();
 	$tree_column->pack_start($renderer, FALSE);
@@ -205,10 +206,10 @@ my $tree_view = Gtk2::TreeView->new($tree_store);
 	$tree_view->append_column($tree_column);
 }
 
-# 2: Branch name column.
+# 2: Branch type column.
 {
 	my $tree_column = Gtk2::TreeViewColumn->new();
-	$tree_column->set_title("Name");
+	$tree_column->set_title("Type");
 
 	my $renderer = Gtk2::CellRendererText->new();
 	$tree_column->pack_start($renderer, FALSE);
@@ -217,14 +218,26 @@ my $tree_view = Gtk2::TreeView->new($tree_store);
 	$tree_view->append_column($tree_column);
 }
 
-# 3: Relocated path column.
+# 3: Branch name column.
+{
+	my $tree_column = Gtk2::TreeViewColumn->new();
+	$tree_column->set_title("Name");
+
+	my $renderer = Gtk2::CellRendererText->new();
+	$tree_column->pack_start($renderer, FALSE);
+	$tree_column->add_attribute($renderer, text => 3);
+
+	$tree_view->append_column($tree_column);
+}
+
+# 4: Relocated path column.
 {
 	my $tree_column = Gtk2::TreeViewColumn->new();
 	$tree_column->set_title("Relocated");
 
 	my $renderer = Gtk2::CellRendererText->new();
 	$tree_column->pack_start($renderer, FALSE);
-	$tree_column->add_attribute($renderer, text => 3);
+	$tree_column->add_attribute($renderer, text => 4);
 
 	$tree_view->append_column($tree_column);
 }
@@ -235,18 +248,35 @@ $tree_view->set_search_column(0);
 $scrolled_window->add($tree_view);
 
 sub _populate_tree_recursive {
-	my ($parent_iter, $tree_node) = @_;
+	my ($revision, $parent_iter, $tree_node) = @_;
 
 	my $iter = $tree_store->append($parent_iter);
+
+	my $node = $tree_node->{node};
 	$tree_store->set(
 		$iter,
 		0 => $tree_node->{name},
-		1 => $tree_node->{node}->entity_type(),
-		2 => $tree_node->{node}->entity_name(),
-		3 => $tree_node->{node}->relocate_path(),
+		1 => (
+			($revision == $node->revision)
+			? (
+				$node->is_copy()
+				? "copy"
+				: (
+					$node->is_add()
+					? "add"
+					: "--"
+				)
+			)
+			: "--"
+		),
+		2 => $node->entity_type(),
+		3 => $node->entity_name(),
+		4 => $node->relocate_path(),
 	);
 
-	_populate_tree_recursive($iter, $_) foreach @{$tree_node->{children}};
+	_populate_tree_recursive($revision, $iter, $_) foreach (
+		@{$tree_node->{children}}
+	);
 }
 
 sub populate_tree {
@@ -255,7 +285,7 @@ sub populate_tree {
 	my $tree = $analysis->as_tree_then($revision);
 
 	$tree_store->clear();
-	_populate_tree_recursive(undef, $tree);
+	_populate_tree_recursive($revision, undef, $tree);
 
 	# TODO - Expand only branches and tags, not directories.
 	$tree_view->expand_all();
