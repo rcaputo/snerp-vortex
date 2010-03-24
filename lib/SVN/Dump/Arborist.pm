@@ -264,4 +264,14 @@ sub get_copy_sources {
 	return $self->analysis()->get_copy_sources_then($revision);
 }
 
+sub get_copy_source_then {
+	my ($self, $revision, $path) = @_;
+	return $self->analysis()->get_copy_source_then($revision, $path);
+}
+
+sub get_all_copy_sources {
+	my $self = shift;
+	return $self->analysis()->copy_sources();
+}
+
 1;

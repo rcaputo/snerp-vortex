@@ -16,31 +16,31 @@ has dir => (
 	default => sub { { } },
 );
 
-# TODO - Optimize runtime copy sources by managing their reference
-# counts.  Replayers can delete copy depot files when they stop being
-# useful.  Likewise, copy_sources() can shrink, with memory and
-# lookups reducing as well.
+{
+	package SVN::Analysis::CopySource;
+	use Moose;
+	has kind  => ( is => 'rw', isa => 'Str', required => 1 );
+	has refs  => ( is => 'rw', isa => 'HashRef[HashRef[Bool]]', required => 1 );
 
-#{
-#	package SVN::Analysis::CopySource;
-#	use Moose;
-#	has kind    => ( is => 'rw', isa => 'Str', required => 1 );
-#	has refcnt  => ( is => 'rw', isa => 'Int', required => 1 );
-#
-#	sub refcnt_inc {
-#		my $self = shift;
-#		return $self->refcnt( $self->refcnt() + 1 );
-#	}
-#
-#	sub refcnt_dec {
-#		my $self = shift;
-#		return $self->refcnt( $self->refcnt() - 1 );
-#	}
-#}
+	sub delete_ref {
+		my ($self, $dst_rev, $dst_path) = @_;
+		return unless exists $self->refs()->{$dst_rev};
+		return unless exists $self->refs()->{$dst_rev}->{$dst_path};
+		delete $self->refs()->{$dst_rev}->{$dst_path};
+		return 1 if scalar keys %{$self->refs()->{$dst_rev}};
+		delete $self->refs()->{$dst_rev};
+		return;
+	}
+
+	sub add_ref {
+		my ($self, $dst_rev, $dst_path) = @_;
+		$self->refs()->{$dst_rev}->{$dst_path} = 1;
+	}
+}
 
 has copy_sources => (
 	is      => 'rw',
-	isa     => 'HashRef[HashRef[Str]]',
+	isa     => 'HashRef[HashRef[SVN::Analysis::CopySource]]',
 	default => sub { { } },
 );
 
@@ -81,7 +81,18 @@ sub consider_copy {
 	my ($self, $dst_revision, $dst_path, $kind, $src_revision, $src_path) = @_;
 
 	# Remember the copy source.
-	$self->copy_sources()->{$src_revision}{$src_path} = $kind;
+	my $copy_source = $self->copy_sources()->{$src_revision}{$src_path};
+	if ($copy_source) {
+		$copy_source->add_ref($dst_revision, $dst_path);
+	}
+	else {
+		$self->copy_sources()->{$src_revision}{$src_path} = (
+			SVN::Analysis::CopySource->new(
+				kind    => $kind,
+				refs    => { $dst_revision => { $dst_path => 1 } },
+			)
+		);
+	}
 
 	# Touch the directory where the copy is landing.
 	$self->touch_parent_directory($dst_revision, $dst_path);
@@ -257,9 +268,21 @@ sub as_xml_string {
 			my $copy_source = $document->createElement("copy_source");
 			$copy_source->setAttribute(revision => $revision);
 			$copy_source->setAttribute(path => $path);
-			$copy_source->setAttribute(
-				kind => $self->copy_sources()->{$revision}{$path}
-			);
+
+			my $cs = $self->copy_sources()->{$revision}{$path};
+			$copy_source->setAttribute(kind => $cs->kind());
+
+			my $refs = $cs->refs();
+
+			foreach my $dst_rev (sort { $a <=> $b } keys %$refs) {
+				my $dst_rev_rec = $refs->{$dst_rev};
+				foreach my $dst_path (sort keys %$dst_rev_rec) {
+					my $destination = $document->createElement("destination");
+					$destination->setAttribute(revision => $dst_rev);
+					$destination->setAttribute(path => $dst_path);
+					$copy_source->appendChild($destination);
+				}
+			}
 
 			$analysis->appendChild($copy_source);
 		}
@@ -368,8 +391,17 @@ sub init_from_xml_document {
 
 	my $sources = $self->copy_sources();
 	foreach my $cs ($document->findnodes("/analysis/copy_source")) {
+
+		my %refs;
+		foreach my $dest ($cs->findnodes("./destination")) {
+			$refs{$dest->getAttribute("revision")}{$dest->getAttribute("path")} = 1;
+		}
+
 		$sources->{$cs->getAttribute("revision")}{$cs->getAttribute("path")} = (
-			$cs->getAttribute("kind")
+			SVN::Analysis::CopySource->new(
+				kind  => $cs->getAttribute("kind"),
+				refs  => \%refs,
+			)
 		);
 	}
 
@@ -546,6 +578,11 @@ sub get_copy_sources_then {
 	my ($self, $revision) = @_;
 	return {} unless exists $self->copy_sources()->{$revision};
 	return $self->copy_sources()->{$revision};
+}
+
+sub get_copy_source_then {
+	my ($self, $revision, $path) = @_;
+	return $self->copy_sources()->{$revision}->{$path};
 }
 
 1;

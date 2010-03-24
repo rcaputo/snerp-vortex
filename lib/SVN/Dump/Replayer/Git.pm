@@ -65,11 +65,15 @@ after on_revision_done => sub {
 	# TODO - If the copy source is only used to "branch" or "tag"
 	# something, then we can rename the branch or tag instead of saving
 	# a copy here.
+	#
+	# TODO - Git can copy files & directories across branches.  Do we
+	# even need the tarballs?
 
 	$self->push_dir($self->replay_base());
 
 	my $copy_sources = $self->arborist()->get_copy_sources($revision_id);
-	COPY: while (my ($cps_path, $cps_kind) = each %$copy_sources) {
+	COPY: while (my ($cps_path, $cps_obj) = each %$copy_sources) {
+		my $cps_kind = $cps_obj->kind();
 		$self->log("CPY) saving $cps_kind $cps_path for later.");
 
 		# Switch to the copy source branch.
@@ -119,6 +123,26 @@ after on_revision_done => sub {
 before on_walk_begin => sub {
 	my $self = shift;
 	$self->arborist()->map_entity_names( { "proj-root", "master" } );
+
+	# Remove from consideration all copy sources that create entities.
+
+	my $copy_sources = $self->get_all_copy_sources();
+	SRC_REV: foreach my $src_rev (keys %$copy_sources) {
+		my $src_rev_rec = $copy_sources{$src_rev};
+
+		SRC_PATH: foreach my $src_path (keys %$src_rev_rec) {
+			my $src = $src_rev_rec->{$src_path};
+			my $refs = $src->refs();
+
+			DST_REV: foreach my $dst_rev (keys %$refs) {
+				my $dst_rev_rec = $refs->{$dst_rev};
+
+				DST_PATH: foreach my $dst_path (keys %$dst_rev_rec) {
+					die "analyze the destination entity, and prune if entity"; # TODO
+				}
+			}
+		}
+	}
 };
 
 after on_walk_begin => sub {
@@ -222,9 +246,6 @@ sub on_branch_directory_copy {
 	$self->current_branch($new_branch_name);
 	$self->pop_dir();
 	return;
-
-#	$self->do_directory_copy($change, $self->qualify_change_path($change));
-#	$self->directories_needing_add()->{$change->rel_path()} = 1;
 }
 
 sub on_directory_copy {
@@ -710,7 +731,9 @@ sub ensure_parent_dir_exists {
 sub set_branch {
 	my ($self, $revision, $analysis) = @_;
 
-	confess "set_branch() called without an entity" unless $analysis->is_entity();
+	confess "set_branch() called without an entity" unless (
+		$analysis->is_entity()
+	);
 
 	# What we do depends on the changed entity type.
 	my $type = $analysis->entity_type();
@@ -763,6 +786,8 @@ sub do_directory_copy {
 	$self->push_dir($branch_rel_path);
 	$self->do_or_die("tar", "xzf", $copy_depot_path);
 	$self->pop_dir();
+
+	$self->decrement_copy_source($change, $copy_depot_path);
 }
 
 sub do_file_copy {
@@ -783,11 +808,28 @@ sub do_file_copy {
 	# Weirdly, the copy source may not be authoritative.
 	if (defined $change->content()) {
 		$self->write_change_data($change, $branch_rel_path);
+		$self->decrement_copy_source($change, $copy_depot_path);
 		return;
 	}
 
 	# If content isn't provided, however, copy the file from the depot.
 	$self->copy_file_or_die($copy_depot_path, $branch_rel_path);
+	$self->decrement_copy_source($change, $copy_depot_path);
+}
+
+sub decrement_copy_source {
+	my ($self, $change, $copy_depot_path) = @_;
+
+	my $copy_source = $self->arborist()->get_copy_source_then(
+		$change->src_rev,
+		$change->src_path,
+	);
+
+	confess "what's going on" unless defined $copy_source;
+
+	$self->do_file_deletion($copy_depot_path) unless (
+		$copy_source->delete_ref($change->dst_rev(), $change->dst_path()
+	);
 }
 
 1;
