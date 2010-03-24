@@ -130,25 +130,26 @@ sub add_new_node {
 sub copy_node {
 	my ($self, $src_rev, $src_path, $revision, $dst_path, $kind, $data) = @_;
 
-	my ($src_analysis_method, $src_entity_method);
+	my ($get_analysis_method, $get_entity_method);
+
 	if ($kind eq "file") {
-		$src_analysis_method  = "get_container_analysis_then";
-		$src_entity_method    = "get_container_entity_then";
+		$get_analysis_method  = "get_container_analysis_then";
+		$get_entity_method    = "get_container_entity_then";
 	}
 	else {
-		$src_analysis_method  = "get_analysis_then";
-		$src_entity_method    = "get_entity_then";
+		$get_analysis_method  = "get_analysis_then";
+		$get_entity_method    = "get_entity_then";
 	}
 
 	my $change_class = "SVN::Dump::Change::Cp$kind";
 	$self->pending_revision()->push_change(
 		$change_class->new(
-			analysis      => $self->get_analysis_then($revision, $dst_path),
-			entity        => $self->get_entity_then($revision, $dst_path),
+			analysis      => $self->$get_analysis_method($revision, $dst_path),
+			entity        => $self->$get_entity_method($revision, $dst_path),
 			path          => $dst_path,
 			content       => $data,
-			src_analysis  => $self->$src_analysis_method($src_rev, $src_path),
-			src_entity    => $self->$src_entity_method($src_rev, $src_path),
+			src_analysis  => $self->$get_analysis_method($src_rev, $src_path),
+			src_entity    => $self->$get_entity_method($src_rev, $src_path),
 			src_path      => $src_path,
 			src_rev       => $src_rev,
 		)

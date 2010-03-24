@@ -126,19 +126,32 @@ before on_walk_begin => sub {
 
 	# Remove from consideration all copy sources that create entities.
 
-	my $copy_sources = $self->get_all_copy_sources();
+	my $copy_sources = $self->arborist()->get_all_copy_sources();
 	SRC_REV: foreach my $src_rev (keys %$copy_sources) {
-		my $src_rev_rec = $copy_sources{$src_rev};
+		my $src_rev_rec = $copy_sources->{$src_rev};
 
 		SRC_PATH: foreach my $src_path (keys %$src_rev_rec) {
 			my $src = $src_rev_rec->{$src_path};
+
+			# Only directories can be entities.
+			next SRC_PATH if $src->kind() ne "dir";
+
 			my $refs = $src->refs();
 
 			DST_REV: foreach my $dst_rev (keys %$refs) {
 				my $dst_rev_rec = $refs->{$dst_rev};
 
 				DST_PATH: foreach my $dst_path (keys %$dst_rev_rec) {
-					die "analyze the destination entity, and prune if entity"; # TODO
+					my $dst_analysis = $self->arborist()->get_analysis_then(
+						$dst_rev,
+						$dst_path
+					);
+
+					next unless $dst_analysis->is_entity();
+					next if $src->delete_ref($dst_rev, $dst_path);
+
+					delete $copy_sources->{$src_rev}{$src_path};
+					next SRC_PATH;
 				}
 			}
 		}
@@ -175,9 +188,9 @@ after on_walk_begin => sub {
 	# Perform an initial commit so that the master branch is ready.
 	# Needed in case the repository branches right away.
 	# TODO - Detect when needed, and only use then.
-	my $initial_file = "deleteme.snerp.vortex";
+	my $initial_file = "created_by_snerp_vortex.txt";
 	open my $fh, ">", $initial_file or die $!;
-	print $fh "Created by Snerp Vortex.\n";
+	print $fh "This repository was created by Snerp Vortex.\n";
 	close $fh;
 	$self->do_or_die("git", "add", "-f", $initial_file);
 	$self->needs_commit(1);
@@ -194,9 +207,7 @@ sub on_branch_directory_creation {
 	$self->set_branch(
 		$revision, $self->arborist()->get_entity_then($revision->id(), "")
 	);
-warn $change->path();
-warn $change->entity_type();
-warn $change->entity_name();
+
 	my $new_branch_name = $change->analysis()->entity_name();
 	$self->do_or_die("git", "checkout", "-q", "-b", $new_branch_name);
 	$self->current_branch($new_branch_name);
@@ -217,21 +228,7 @@ sub on_branch_directory_copy {
 	# sub-branches and mapping them to proper branches.  Then they can
 	# be tagged as proper entities.
 
-	#unless ($change->is_from_container()) {
-	#	confess "source is not container";
-	#}
-
-	# TODO - This tells us how to map directories.
-	# "GIT) creating branch from trunk to tags/v0_06".
-	# From this point forward, all paths beginning with "tags/v0_06/"
-	# become "trunk/".
-
 	my $new_entity = $change->entity();
-	#my $new_entity = $self->arborist()->get_entity_then(
-	#$revision, $change->path()
-	#);
-	warn $new_entity->entity_type();
-	warn $new_entity->entity_name();
 
 	$self->log(
 		"GIT) creating branch from ", $change->src_entity()->path(),
@@ -259,7 +256,7 @@ sub on_directory_copy {
 	#my $dst_path = $self->arborist()->calculate_relative_path($change->path());
 	my $dst_path = $change->rel_path();
 
-	$self->do_directory_copy($src_branch_name, $change, $dst_path);
+	$self->do_directory_copy($src_branch_name, $change, $revision, $dst_path);
 	$self->directories_needing_add()->{$dst_path} = 1;
 	$self->pop_dir();
 }
@@ -315,6 +312,16 @@ sub on_branch_directory_deletion {
 	my ($self, $change, $revision) = @_;
 
 	$self->push_dir($self->replay_base());
+
+	my $branch_to_delete = $change->entity_name();
+
+	# Get off the branch if we're deleting the one we're on.
+	if ($branch_to_delete eq $self->current_branch()) {
+		$self->set_branch(
+			$revision, $self->arborist()->get_entity_then($revision->id(), "")
+		);
+	}
+
 	$self->git_env_setup($revision);
 	$self->do_or_die("git", "branch", "-D", $change->entity_name());
 	$self->pop_dir();
@@ -342,7 +349,7 @@ sub on_file_copy {
 
 	my $dst_path = $change->rel_path();
 
-	$self->do_file_copy($src_branch_name, $change);
+	$self->do_file_copy($src_branch_name, $change, $revision);
 	$self->files_needing_add()->{$dst_path} = 1;
 	$self->pop_dir();
 }
@@ -446,14 +453,17 @@ sub on_file_rename {
 
 	$self->git_env_setup($revision);
 
-	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
-	rename($change->rel_src_path(), $change->rel_path()) or confess(
+	$self->do_sans_die(
+		"git", "mv", $change->src_rel_path(), $change->rel_path()
+	) or rename(
+		$change->rel_src_path(), $change->rel_path()
+	) or confess(
 		"file rename from ", $change->rel_src_path(),
 		" to ", $change->rel_path(),
 		"failed: $!"
 	);
 
-	$self->ensure_parent_dir_exists($change->src_path());
+	$self->ensure_parent_dir_exists($change->src_rel_path());
 	$self->pop_dir();
 	$self->needs_commit(1);
 }
@@ -463,20 +473,23 @@ sub on_rename {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->entity());
 
-	confess "target of rename (", $change->path(), ") already exists" if (
-		-e $change->path()
+	confess "target of rename (", $change->rel_path(), ") already exists" if (
+		-e $change->rel_path()
 	);
 
 	$self->git_env_setup($revision);
 
-	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
-	rename($change->src_path(), $change->path()) or confess(
-		"rename from ", $change->src_path(),
-		" to ", $change->path(),
+	$self->do_sans_die(
+		"git", "mv", $change->src_rel_path(), $change->rel_path()
+	) or rename(
+		$change->src_rel_path(), $change->rel_path()
+	) or confess(
+		"rename from ", $change->src_rel_path(),
+		" to ", $change->rel_path(),
 		"failed: $!"
 	);
 
-	$self->ensure_parent_dir_exists($change->src_path());
+	$self->ensure_parent_dir_exists($change->src_rel_path());
 	$self->pop_dir();
 	$self->needs_commit(1);
 }
@@ -486,18 +499,21 @@ sub on_directory_rename {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->entity());
 
-	confess "target of dir rename (", $change->path(), ") already exists" if (
-		-e $change->path()
+	confess "target of dir rename (", $change->rel_path(), ") already exists" if (
+		-e $change->rel_path()
 	);
 
-	$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
-	rename($change->src_path(), $change->path()) or confess(
-		"directory rename from ", $change->src_path(),
-		" to ", $change->path(),
+	$self->do_sans_die(
+		"git", "mv", $change->src_rel_path(), $change->rel_path()
+	) or rename(
+		$change->src_rel_path(), $change->rel_path()
+	) or confess(
+		"directory rename from ", $change->src_rel_path(),
+		" to ", $change->rel_path(),
 		"failed: $!"
 	);
 
-	$self->ensure_parent_dir_exists($change->src_path());
+	$self->ensure_parent_dir_exists($change->src_rel_path());
 	$self->pop_dir();
 	$self->needs_commit(1);
 }
@@ -505,51 +521,33 @@ sub on_directory_rename {
 sub on_branch_rename {
 	my ($self, $change, $revision) = @_;
 
-	if (0) {
-		$self->push_dir($self->replay_base());
-		$self->set_branch($revision, $change->entity());
+	$self->push_dir($self->replay_base());
+	$self->git_env_setup($revision);
+	$self->do_or_die(
+		"git", "branch", "-m",
+		$change->src_entity_name(),
+		$change->entity_name(),
+	);
+	$self->pop_dir();
 
-		confess "target of branch rename (", $change->path(), ") already exists" if (
-			-e $change->path()
-		);
-
-		$self->git_env_setup($revision);
-
-		$self->do_sans_die("git", "mv", $change->src_path(), $change->path()) or
-		rename($change->src_path(), $change->path()) or
-		confess(
-			"branch rename from ", $change->src_path(),
-			" to ", $change->path(),
-			" failed: $!"
-		);
-
-		$self->ensure_parent_dir_exists($change->src_path());
-		$self->pop_dir();
-		$self->needs_commit(1);
-	}
-	else {
-		$self->push_dir($self->replay_base());
-		$self->git_env_setup($revision);
-		$self->do_or_die(
-			"git", "branch", "-m",
-			$change->src_entity_name(),
-			$change->entity_name(),
-		);
-		$self->pop_dir();
-	}
+	# Did we just rename the current branch?
+	$self->current_branch($change->entity_name()) if (
+		$change->src_entity_name() eq $self->current_branch()
+	);
 }
 
 sub on_tag_rename {
 	my ($self, $change, $revision) = @_;
 
 	$self->push_dir($self->replay_base());
-	#$self->set_branch($revision, $change->entity());
 
 	my $old_tag_name = $change->src_entity_name();
 	my $new_tag_name = $change->entity_name();
 
 	# Find the change referenced by the old tag.
-	my $old_tag_ref = $self->pipe_out_of_or_die("git rev-parse -- $old_tag_name");
+	my $old_tag_ref = $self->pipe_out_of_or_die(
+		"git rev-parse -- $old_tag_name | tail -1"
+	);
 	confess "unreferenced tag $old_tag_name" unless (
 		defined $old_tag_ref and length $old_tag_ref
 	);
@@ -767,7 +765,7 @@ sub set_branch {
 
 # Already in the destination branch.
 sub do_directory_copy {
-	my ($self, $src_branch_name, $change, $branch_rel_path) = @_;
+	my ($self, $src_branch_name, $change, $revision, $branch_rel_path) = @_;
 
 	confess "cp to $branch_rel_path failed: path exists" if -e $branch_rel_path;
 
@@ -787,18 +785,18 @@ sub do_directory_copy {
 	$self->do_or_die("tar", "xzf", $copy_depot_path);
 	$self->pop_dir();
 
-	$self->decrement_copy_source($change, $copy_depot_path);
+	$self->decrement_copy_source($change, $revision, $copy_depot_path);
 }
 
 sub do_file_copy {
-	my ($self, $src_branch_name, $change) = @_;
+	my ($self, $src_branch_name, $change, $revision) = @_;
 
 	my $branch_rel_path = $change->rel_path();
 
 	confess "cp to $branch_rel_path failed: path exists" if -e $branch_rel_path;
 
 	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
-		$src_branch_name, $change
+		$change
 	);
 
 	unless (-e $copy_depot_path) {
@@ -808,17 +806,17 @@ sub do_file_copy {
 	# Weirdly, the copy source may not be authoritative.
 	if (defined $change->content()) {
 		$self->write_change_data($change, $branch_rel_path);
-		$self->decrement_copy_source($change, $copy_depot_path);
+		$self->decrement_copy_source($change, $revision, $copy_depot_path);
 		return;
 	}
 
 	# If content isn't provided, however, copy the file from the depot.
 	$self->copy_file_or_die($copy_depot_path, $branch_rel_path);
-	$self->decrement_copy_source($change, $copy_depot_path);
+	$self->decrement_copy_source($change, $revision, $copy_depot_path);
 }
 
 sub decrement_copy_source {
-	my ($self, $change, $copy_depot_path) = @_;
+	my ($self, $change, $revision, $copy_depot_path) = @_;
 
 	my $copy_source = $self->arborist()->get_copy_source_then(
 		$change->src_rev,
@@ -828,7 +826,7 @@ sub decrement_copy_source {
 	confess "what's going on" unless defined $copy_source;
 
 	$self->do_file_deletion($copy_depot_path) unless (
-		$copy_source->delete_ref($change->dst_rev(), $change->dst_path()
+		$copy_source->delete_ref($revision->id(), $change->path())
 	);
 }
 

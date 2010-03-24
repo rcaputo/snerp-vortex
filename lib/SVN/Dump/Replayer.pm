@@ -78,16 +78,18 @@ sub on_revision_done {
 		my $operation    = $change->operation();
 		my $dst_analysis = $change->analysis();
 
-		$self->log("REP) $operation ", $change->path());
+		$self->log("REP) doing: $operation ", $change->path());
 		$self->log(
-			"REP) ", ($dst_analysis->is_entity() ? "is" : "is not"), " entity"
+			"REP) entity: ", $dst_analysis->entity_type(),
+			" ", $dst_analysis->entity_name()
 		);
 		$self->log(
-			$dst_analysis->entity_type(), " ", $dst_analysis->entity_name()
+			"REP) status: ", ($dst_analysis->is_entity() ? "is" : "is not"),
+			" entity"
 		);
 
 		# Change is an entity.  Perhaps something is tagged or branched?
-		if ($dst_analysis->is_entity()) {
+		if ($change->is_entity()) {
 			my $entity_type = $dst_analysis->entity_type();
 
 			if ($entity_type eq "branch") {

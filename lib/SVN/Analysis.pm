@@ -556,7 +556,6 @@ sub get_entity_then {
 
 	# Find the described change.  Return it if it's an entity.
 	my $change_then = $self->get_path_change_then($revision, $path);
-
 	return $change_then if $change_then->is_entity();
 
 	# Otherwise jump to the entity holding the change.

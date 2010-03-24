@@ -21,4 +21,9 @@ sub rel_path {
 	return $self->analysis()->fix_path($self->path());
 }
 
+sub is_entity {
+	my $self = shift;
+	return $self->path() eq $self->entity()->path();
+}
+
 1;
