@@ -48,14 +48,8 @@ has revisions_until_gc => ( is => 'rw', isa => 'Int', default => 1000 );
 
 has tags => ( is => 'rw', isa => 'HashRef[GitTag]', default => sub { {} } );
 
-has current_branch => ( is => 'rw', isa => 'Str', default => 'master' );
-
-{
-	package SVN::Dump::Replayer::Git::CopySrc;
-	use Moose;
-	has git_rev => ( is => 'ro', isa => 'Str', required => 1 );
-	has rel_path => ( is => 'ro', isa => 'Str', required => 1 );
-}
+has current_branch => ( is => 'rw', isa => 'Str',  default => 'master' );
+has current_rw     => ( is => 'rw', isa => 'Bool', default => 1 );
 
 ###
 
@@ -74,97 +68,57 @@ after on_revision_done => sub {
 
 	$self->push_dir($self->replay_base());
 
-	COPY: foreach my $copy (
-		map { @$_ }
-		values %{$self->arborist()->copy_sources()->{$revision_id} || {}}
-	) {
-		$self->log($copy->debug("CPY) saving %s"));
+	my $copy_sources = $self->arborist()->get_copy_sources($revision_id);
+	COPY: while (my ($cps_path, $cps_kind) = each %$copy_sources) {
+		$self->log("CPY) saving $cps_kind $cps_path for later.");
 
-		# Historical entities are based on non-relative paths.
-		my $src_entity = $self->arborist()->get_historical_entity(
-			$revision_id, $copy->src_path(),
+		# Switch to the copy source branch.
+		my $src_entity_method = (
+			($cps_kind eq "file")
+			? "get_container_entity_then"
+			: "get_entity_then"
 		);
 
-		# Sanity check.  Copy sources are always branches.
-		# TODO - They could be tags, since tags are just references to
-		# particular moments in time.
-		confess $src_entity->type() unless $src_entity->type() eq "branch";
-
-		# Historical entities are based on non-relative paths.
-		my $dst_entity = $self->arborist()->get_historical_entity(
-			$copy->dst_revision(), $copy->dst_path()
+		my $src_entity = $self->arborist()->$src_entity_method(
+			$revision_id, $cps_path
 		);
 
-		my $svn_branch = $src_entity->name();
-		my $git_branch = $self->get_git_branch_name($src_entity);
+		$self->set_branch($final_revision, $src_entity);
 
-		# The copy depot descriptor is a MD5 hex string describing the
-		# source path and revision.  Git's replayer uses it as a key into
-		# its hash-based copy depot.
+		my $relative_src_path = $src_entity->fix_path($cps_path);
+		$relative_src_path = "." unless length $relative_src_path;
 
-		my ($copy_depot_descriptor, $copy_depot_path) =
-			$self->calculate_depot_info(
-				$svn_branch, $copy->rel_src_path(), $copy->src_revision()
-			);
-
-		my $copy_src_path = $copy->rel_src_path();
-
-		$self->log(
-			"CPY) Copy from ", $src_entity->type(), " ",
-			$src_entity->name(), " (", $copy->src_path(), ") at r",
-			$copy->src_revision()
-		);
-		$self->log("CPY) descriptor = $copy_depot_descriptor");
-
-		if ($git_branch ne $self->current_branch()) {
-			$self->log("GIT) switching to branch $git_branch");
-			$self->do_sans_die("git", "checkout", "-q", $git_branch);
-			$self->current_branch($git_branch);
-		}
-
-		confess "copy source path $copy_src_path doesn't exist" unless (
-			-e $copy_src_path
+		# Get the copy depot information, based on absolute path/rev tuples.
+		my ($copy_depot_id, $copy_depot_path) = $self->calculate_depot_info(
+			$cps_path, $revision_id
 		);
 
-		if (-d $copy_src_path) {
+		# Tarball a directory.
+		if ($cps_kind eq "dir") {
+			$copy_depot_path .= ".tar.gz";
 			$self->log(
-				"CPY) Saving directory $copy_src_path in: $copy_depot_path.tar.gz"
+				"CPY) Saving directory $relative_src_path in: $copy_depot_path"
 			);
-			$self->push_dir($copy_src_path);
-			$self->do_or_die("tar", "czf", "$copy_depot_path.tar.gz", ".");
+			$self->push_dir($relative_src_path);
+			$self->do_or_die("tar", "czf", $copy_depot_path, ".");
 			$self->pop_dir();
 			next COPY;
 		}
 
-		$self->log("CPY) Saving file $copy_src_path in: $copy_depot_path");
-		$self->copy_file_or_die($copy_src_path, $copy_depot_path);
+		$self->log("CPY) Saving file $relative_src_path in: $copy_depot_path");
+		$self->copy_file_or_die($relative_src_path, $copy_depot_path);
 		next COPY;
 	}
-
-#trunk trunk 28: !!perl/hash:SVN::Dump::Replayer::Git::CopySrc 
-#  git_rev: 9a69aff2a0a4d67afd317e2ba66545894464fc2c
-#  rel_path: trunk
 
 	$self->pop_dir();
 };
 
-# Before entity fixup, flag all source entities as modified, and
-# convert them to branches if necessary.  This pins these "tags" to
-# the filesystem, where they'll have files from which copies can be
-# made.
-# TODO - This all may become moot if we can copy from tags in git.
+# Analysis is generic for Subversion.  Map entity names to Git
+# specific ones.
+
 before on_walk_begin => sub {
 	my $self = shift;
-
-	my $copy_sources = $self->arborist()->copy_sources();
-	while (my ($rev, $path_rec) = each %$copy_sources) {
-		foreach my $path (keys %$path_rec) {
-			my $entity = $self->arborist()->get_entity($path, $rev);
-			next unless $entity;
-			$entity->modified(1);
-			$entity->type("branch");
-		}
-	}
+	$self->arborist()->map_entity_names( { "proj-root", "master" } );
 };
 
 after on_walk_begin => sub {
@@ -194,15 +148,15 @@ after on_walk_begin => sub {
 	$self->push_dir($self->replay_base());
 	$self->do_or_die("git", "init", ($self->verbose() ? () : ("-q")));
 
-#	# Perform an initial commit so that the master branch is ready.
-#	# Needed in case the repository branches right away.
-#	# TODO - Detect when needed, and only use then.
-#	my $initial_file = "deleteme.snerp.vortex";
-#	open my $fh, ">", $initial_file or die $!;
-#	print $fh "Created by Snerp Vortex.\n";
-#	close $fh;
-#	$self->do_or_die("git", "add", "-f", $initial_file);
-#	$self->needs_commit(1);
+	# Perform an initial commit so that the master branch is ready.
+	# Needed in case the repository branches right away.
+	# TODO - Detect when needed, and only use then.
+	my $initial_file = "deleteme.snerp.vortex";
+	open my $fh, ">", $initial_file or die $!;
+	print $fh "Created by Snerp Vortex.\n";
+	close $fh;
+	$self->do_or_die("git", "add", "-f", $initial_file);
+	$self->needs_commit(1);
 
 	$self->pop_dir();
 };
@@ -212,15 +166,18 @@ sub on_branch_directory_creation {
 
 	$self->push_dir($self->replay_base());
 
-	# Branch directories are always created out of master?
-	$self->set_branch($revision, "master");
-	#$self->set_branch($revision, $change->container());
-
-	my $path = $change->rel_path();
-	$self->do_mkdir($path);
+	# Current master branch.
+	$self->set_branch(
+		$revision, $self->arborist()->get_entity_then($revision->id(), "")
+	);
+warn $change->path();
+warn $change->entity_type();
+warn $change->entity_name();
+	my $new_branch_name = $change->analysis()->entity_name();
+	$self->do_or_die("git", "checkout", "-q", "-b", $new_branch_name);
+	$self->current_branch($new_branch_name);
 
 	$self->pop_dir();
-	# Git doesn't track directories, so nothing to add.
 }
 
 sub on_branch_directory_copy {
@@ -245,15 +202,22 @@ sub on_branch_directory_copy {
 	# From this point forward, all paths beginning with "tags/v0_06/"
 	# become "trunk/".
 
+	my $new_entity = $change->entity();
+	#my $new_entity = $self->arborist()->get_entity_then(
+	#$revision, $change->path()
+	#);
+	warn $new_entity->entity_type();
+	warn $new_entity->entity_name();
+
 	$self->log(
-		"GIT) creating branch from ", $change->src_container->path(),
+		"GIT) creating branch from ", $change->src_entity()->path(),
 		" to ", $change->path()
 	);
 
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->src_container());
+	$self->set_branch($revision, $change->src_entity());
 
-	my $new_branch_name = $self->get_git_branch_name($change->container());
+	my $new_branch_name = $change->entity_name();
 	$self->do_or_die("git", "checkout", "-q", "-b", $new_branch_name);
 	$self->current_branch($new_branch_name);
 	$self->pop_dir();
@@ -266,10 +230,10 @@ sub on_branch_directory_copy {
 sub on_directory_copy {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+	$self->set_branch($revision, $change->entity());
 
 	# SVN branch name for finding copy source.
-	my $src_branch_name = $change->src_container()->name();
+	my $src_branch_name = $change->src_entity_name();
 
 	#my $dst_path = $self->arborist()->calculate_relative_path($change->path());
 	my $dst_path = $change->rel_path();
@@ -282,7 +246,7 @@ sub on_directory_copy {
 sub on_directory_creation {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+	$self->set_branch($revision, $change->entity());
 	$self->do_mkdir($change->rel_path());
 	$self->pop_dir();
 }
@@ -298,7 +262,7 @@ sub on_directory_deletion {
 
 	# First try git rm, to remove from the repository.
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+	$self->set_branch($revision, $change->entity());
 
 	my $rm_path = $change->rel_path();
 	confess "can't remove nonexistent directory $rm_path" unless -e $rm_path;
@@ -331,16 +295,14 @@ sub on_branch_directory_deletion {
 
 	$self->push_dir($self->replay_base());
 	$self->git_env_setup($revision);
-	$self->do_or_die(
-		"git", "branch", "-D", $self->get_git_branch_name($change->container())
-	);
+	$self->do_or_die("git", "branch", "-D", $change->entity_name());
 	$self->pop_dir();
 }
 
 sub on_file_change {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+	$self->set_branch($revision, $change->entity());
 	my $rewrite_path = $change->rel_path();
 
 	if ($self->rewrite_file($change, $rewrite_path)) {
@@ -352,10 +314,10 @@ sub on_file_change {
 sub on_file_copy {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+	$self->set_branch($revision, $change->entity());
 
 	# SVN branch name for finding copy source.
-	my $src_branch_name = $change->src_container()->name();
+	my $src_branch_name = $change->src_entity_name();
 
 	my $dst_path = $change->rel_path();
 
@@ -367,7 +329,7 @@ sub on_file_copy {
 sub on_file_creation {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+	$self->set_branch($revision, $change->entity());
 	my $create_path = $change->rel_path();
 
 	$self->write_new_file($change, $create_path);
@@ -379,7 +341,7 @@ sub on_file_deletion {
 	my ($self, $change, $revision) = @_;
 
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+	$self->set_branch($revision, $change->entity());
 
 	my $rm_path = $change->rel_path();
 	confess "can't remove nonexistent file $rm_path" unless -e $rm_path;
@@ -406,13 +368,15 @@ sub on_tag_directory_copy {
 
 	$self->git_commit($revision);
 
-	my $tag_name = $change->container()->name();
+	my $tag_name = $change->analysis()->entity_name();
+
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->src_container());
+	$self->set_branch($revision, $change->src_entity());
 
 	$self->git_env_setup($revision);
 
 	$self->pipe_into_or_die($revision->message(), "git tag -a -F - $tag_name");
+
 	$self->pop_dir();
 
 	$self->log("TAG) setting tag $tag_name");
@@ -424,9 +388,9 @@ sub on_tag_directory_creation {
 
 	$self->git_commit($revision);
 
-	my $tag_name = $change->container()->name();
+	my $tag_name = $change->entity_name();
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+	$self->set_branch($revision, $change->entity());
 
 	$self->git_env_setup($revision);
 
@@ -443,17 +407,17 @@ sub on_tag_directory_deletion {
 	# Tag deletion is out of band.
 	$self->push_dir($self->replay_base());
 	$self->git_env_setup($revision);
-	$self->do_or_die("git", "tag", "-d", $change->container()->name());
+	$self->do_or_die("git", "tag", "-d", $change->entity_name());
 	$self->pop_dir();
 
-	$self->log("TAG) deleting tag ", $change->container()->name());
-	delete $self->tags()->{$change->container()->name()};
+	$self->log("TAG) deleting tag ", $change->entity_name());
+	delete $self->tags()->{$change->entity_name()};
 }
 
 sub on_file_rename {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+	$self->set_branch($revision, $change->entity());
 
 	confess "target of file rename (", $change->rel_path(), ") exists" if (
 		-e $change->rel_path()
@@ -476,7 +440,7 @@ sub on_file_rename {
 sub on_rename {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+	$self->set_branch($revision, $change->entity());
 
 	confess "target of rename (", $change->path(), ") already exists" if (
 		-e $change->path()
@@ -499,7 +463,7 @@ sub on_rename {
 sub on_directory_rename {
 	my ($self, $change, $revision) = @_;
 	$self->push_dir($self->replay_base());
-	$self->set_branch($revision, $change->container());
+	$self->set_branch($revision, $change->entity());
 
 	confess "target of dir rename (", $change->path(), ") already exists" if (
 		-e $change->path()
@@ -522,7 +486,7 @@ sub on_branch_rename {
 
 	if (0) {
 		$self->push_dir($self->replay_base());
-		$self->set_branch($revision, $change->container());
+		$self->set_branch($revision, $change->entity());
 
 		confess "target of branch rename (", $change->path(), ") already exists" if (
 			-e $change->path()
@@ -547,8 +511,8 @@ sub on_branch_rename {
 		$self->git_env_setup($revision);
 		$self->do_or_die(
 			"git", "branch", "-m",
-			$self->get_git_branch_name($change->src_container()),
-			$self->get_git_branch_name($change->container()),
+			$change->src_entity_name(),
+			$change->entity_name(),
 		);
 		$self->pop_dir();
 	}
@@ -558,10 +522,10 @@ sub on_tag_rename {
 	my ($self, $change, $revision) = @_;
 
 	$self->push_dir($self->replay_base());
-	#$self->set_branch($revision, $change->container());
+	#$self->set_branch($revision, $change->entity());
 
-	my $old_tag_name = $change->src_container()->name();
-	my $new_tag_name = $change->container()->name();
+	my $old_tag_name = $change->src_entity_name();
+	my $new_tag_name = $change->entity_name();
 
 	# Find the change referenced by the old tag.
 	my $old_tag_ref = $self->pipe_out_of_or_die("git rev-parse -- $old_tag_name");
@@ -595,6 +559,13 @@ sub on_tag_rename {
 
 sub git_commit {
 	my ($self, $revision) = @_;
+
+	unless ($self->current_rw()) {
+		confess(
+			"attempting a commit on read-only entity ",
+			$self->current_branch()
+		);
+	}
 
 	$self->push_dir($self->replay_base());
 
@@ -699,7 +670,7 @@ sub calculate_path {
 sub git_env_setup {
 	my ($self, $revision) = @_;
 
-	croak "bad revision" unless defined $revision;
+	confess "bad revision" unless defined $revision and ref($revision);
 
 	$ENV{GIT_COMMITTER_DATE} = $ENV{GIT_AUTHOR_DATE} = $revision->time();
 
@@ -728,44 +699,47 @@ sub git_env_setup {
 
 sub ensure_parent_dir_exists {
 	my ($self, $path) = @_;
-	$path =~ s!/[^/]+/?$!!;
+	$path =~ s!/*[^/]+/*$!!;
 	return unless length $path and $path ne "/";
 	return if -e $path;
 	$self->log("mkpath $path");
 	mkpath($path) or confess "mkpath failed: $!";
 }
 
+# Assumes that the cwd is already the replay repository.
 sub set_branch {
-	my ($self, $revision, $container) = @_;
+	my ($self, $revision, $analysis) = @_;
 
-	# Assumes that the cwd is the replay repository.
+	confess "set_branch() called without an entity" unless $analysis->is_entity();
 
 	# What we do depends on the changed entity type.
-	my $type = $container->type();
-	my $name = $self->get_git_branch_name($container);
+	my $type = $analysis->entity_type();
+	my $name = $analysis->entity_name();
 
-	if ($type eq "branch") {
-
-		if ($name eq $self->current_branch()) {
-			$self->log("GIT) already on branch $name");
-			return;
-		}
-
-		$self->git_commit($revision);
-
-		$self->do_sans_die("git", "checkout", "-q", $name);
-		$self->current_branch($name);
-
-		# TODO - We also need to prune the paths within the entity.
-		# Branches don't belong in /branch, for example.
-
+	if ($name eq $self->current_branch()) {
+		$self->log("GIT) already on branch $name");
 		return;
 	}
 
-	confess "set_branch() inappropriately called for a $type $name";
+	$self->git_commit($revision);
 
-	# Map the change's container to an appropriate branch.
-	$self->log($container->debug("!!! branch %s"));
+	if ($type eq "branch") {
+		$self->current_rw(1);
+	}
+	elsif ($type eq "tag") {
+		$self->current_rw(0);
+	}
+	else {
+		confess "set_branch() inappropriately called for a $type $name";
+	}
+
+	$self->do_sans_die("git", "checkout", "-q", $name);
+	$self->current_branch($name);
+
+	# TODO - We also need to prune the paths within the entity.
+	# Branches don't belong in /branch, for example.
+
+	return;
 }
 
 # Already in the destination branch.
@@ -775,7 +749,7 @@ sub do_directory_copy {
 	confess "cp to $branch_rel_path failed: path exists" if -e $branch_rel_path;
 
 	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
-		$src_branch_name, $change
+		$change
 	);
 
 	# Directory copy sources are tarballs.
@@ -814,13 +788,6 @@ sub do_file_copy {
 
 	# If content isn't provided, however, copy the file from the depot.
 	$self->copy_file_or_die($copy_depot_path, $branch_rel_path);
-}
-
-sub get_git_branch_name {
-	my ($self, $branch) = @_;
-	my $name = $branch->name();
-	return "master" if $name eq "trunk";
-	return $name;
 }
 
 1;

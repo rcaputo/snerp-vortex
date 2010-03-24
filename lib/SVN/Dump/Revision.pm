@@ -40,16 +40,16 @@ sub push_change {
 
 		# Renaming cannot change the entity type.  One may not rename a
 		# branch into a tag, a file into a directory, etc.
-		$previous_change->container()->type(
-			$previous_change->src_container()->type()
-		);
+		$previous_change->entity_type($previous_change->src_entity_type());
 
 		$change = SVN::Dump::Change::Rename->new(
 			path          => $previous_change->path(),
-			container     => $previous_change->container(),
+			entity        => $previous_change->entity(),
+			analysis      => $previous_change->analysis(),
 			src_rev       => $previous_change->src_rev(),
 			src_path      => $previous_change->src_path(),
-			src_container => $previous_change->src_container(),
+			src_entity    => $previous_change->src_entity(),
+			src_analysis  => $previous_change->src_analysis(),
 		);
 	}
 	

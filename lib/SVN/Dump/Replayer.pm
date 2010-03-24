@@ -5,26 +5,13 @@ package SVN::Dump::Replayer;
 use Moose;
 extends qw(SVN::Dump::Walker);
 
-use SVN::Dump::Arborist;
 use File::Copy;
 use File::Path;
 use Cwd;
 use Carp qw(confess);
 use Digest::MD5 qw(md5_hex);
 
-has arborist => (
-	is => 'ro',
-	isa => 'SVN::Dump::Arborist',
-	lazy => 1,
-	default => sub {
-		my $self = shift;
-		return SVN::Dump::Arborist->new(
-			svn_dump_filename => $self->svn_dump_filename(),
-			verbose           => $self->verbose(),
-			include_regexp    => $self->include_regexp(),
-		)->walk();
-	},
-);
+use SVN::Dump::Arborist;
 
 has verbose => ( is => 'ro', isa => 'Bool', default => 0 );
 
@@ -52,11 +39,29 @@ has include_regexp => (
 	isa	=> 'Maybe[RegexpRef]',
 );
 
+has analysis_filename => ( is => 'rw', isa => 'Maybe[Str]' );
+
+has arborist => (
+	is => 'ro',
+	isa => 'SVN::Dump::Arborist',
+	lazy  => 1,
+	default => sub {
+		my $self = shift;
+		return SVN::Dump::Arborist->new(
+			verbose           => $self->verbose(),
+			analysis_filename => $self->analysis_filename(),
+			svn_dump_filename => $self->svn_dump_filename(),
+		);
+	},
+);
+
+#######################
 ### Low-level tracking.
 
 sub on_walk_begin {
 	my $self = shift;
 
+	# Initialize the copy source depot.
 	$self->do_rmdir($self->copy_source_depot()) if -e $self->copy_source_depot();
 	$self->do_mkdir($self->copy_source_depot());
 }
@@ -64,34 +69,38 @@ sub on_walk_begin {
 sub on_revision_done {
 	my ($self, $revision_id) = @_;
 
+	# Finalize the revision object, and return it.
 	my $revision = $self->arborist()->finalize_revision();
+
+	# Apply all the changes it represents.
 	CHANGE: foreach my $change (@{$revision->changes()}) {
 
-		my $operation = $change->operation();
+		my $operation    = $change->operation();
+		my $dst_analysis = $change->analysis();
 
 		$self->log("REP) $operation ", $change->path());
 		$self->log(
-			"REP) ", ($change->is_container() ? "is" : "is not"), " container"
+			"REP) ", ($dst_analysis->is_entity() ? "is" : "is not"), " entity"
 		);
 		$self->log(
-			$change->container()->type(), " ", $change->container()->name()
+			$dst_analysis->entity_type(), " ", $dst_analysis->entity_name()
 		);
 
-		# Change is a container.  Perhaps something is tagged or branched?
-		if ($change->is_container()) {
-			my $container_type = $change->container()->type();
+		# Change is an entity.  Perhaps something is tagged or branched?
+		if ($dst_analysis->is_entity()) {
+			my $entity_type = $dst_analysis->entity_type();
 
-			if ($container_type eq "branch") {
+			if ($entity_type eq "branch") {
 				$operation = "branch_$operation";
 			}
-			elsif ($container_type eq "tag") {
+			elsif ($entity_type eq "tag") {
 				$operation = "tag_$operation";
 			}
-			elsif ($container_type eq "meta") {
+			elsif ($entity_type eq "meta") {
 				# TODO - Do nothing?
 			}
 			else {
-				confess "unexpected container type: $container_type";
+				confess "unexpected entity type: $entity_type";
 			}
 		}
 
@@ -100,7 +109,6 @@ sub on_revision_done {
 		$self->log("REP) calling method $method");
 		$self->$method($change, $revision);
 	}
-
 }
 
 sub on_revision {
@@ -108,7 +116,9 @@ sub on_revision {
 
 	$self->log("r$revision by $author at $date");
 
-	$log_message = "(none)" unless defined($log_message) and length($log_message);
+	$log_message = "(none)" unless (
+		defined($log_message) and length($log_message)
+	);
 	chomp $log_message;
 
 	$self->arborist()->start_revision($revision, $author, $date, $log_message);
@@ -118,28 +128,13 @@ sub on_revision {
 
 sub on_node_add {
 	my ($self, $revision, $path, $kind, $data) = @_;
-
 	$self->arborist()->add_new_node($revision, $path, $kind, $data);
-
-	my $entity = $self->arborist()->get_historical_entity($revision, $path);
-
-	unless (defined $entity) {
-		confess "adding $kind $path in unknown entity";
-	}
-
 	undef;
 }
 
 sub on_node_change {
 	my ($self, $revision, $path, $kind, $data) = @_;
-
-	my $entity = $self->arborist()->get_historical_entity($revision, $path);
-
-	if ($entity->type() ne "branch" and $entity->type() ne "meta") {
-		confess $entity->debug("$path @ $revision changed outside a branch: %s");
-	}
-
-	$self->arborist()->touch_node($path, $kind, $data);
+	$self->arborist()->touch_node($revision, $path, $kind, $data);
 }
 
 # I'm led to believe that node-action "replace" is another form of
@@ -152,8 +147,7 @@ sub on_node_replace {
 sub on_node_delete {
 	my ($self, $revision, $path) = @_;
 
-	my $deleted = $self->arborist()->delete_node($path, $revision);
-	my $kind = $deleted->{kind};
+	$self->arborist()->delete_node($path, $revision);
 
 	# TODO - Push the deletion onto the branch?
 
@@ -162,14 +156,6 @@ sub on_node_delete {
 
 sub on_node_copy {
 	my ($self, $revision, $path, $kind, $from_rev, $from_path, $data) = @_;
-
-	my $d_entity = $self->arborist()->get_historical_entity($revision, $path);
-
-	unless ($d_entity) {
-		confess(
-			"copying $kind $from_path to $path at $revision in unexpected entity"
-		);
-	}
 
 	# TODO - Complex.  See walk-svn.pl for starters.
 	$self->arborist()->copy_node(
@@ -181,17 +167,17 @@ sub on_node_copy {
 
 ### Helper methods.  TODO - Might belong in subclasses.
 
+# Depot info is based on nonambiguous full path and revision.
 sub get_copy_depot_info {
-	my ($self, $branch, $change) = @_;
-	return $self->calculate_depot_info(
-		$branch, $change->rel_src_path(), $change->src_rev()
-	);
+	my ($self, $change) = @_;
+	return $self->calculate_depot_info($change->src_path(), $change->src_rev());
 }
 
+# Depot info is based on nonambiguous full path and revision.
 sub calculate_depot_info {
-	my ($self, $branch, $path, $revision) = @_;
+	my ($self, $path, $revision) = @_;
 
-	my $copy_depot_descriptor = "$branch $path $revision";
+	my $copy_depot_descriptor = "$path $revision";
 
 	my $full_depot_path = (
 		$self->copy_source_depot() . "/" .
@@ -207,14 +193,14 @@ sub calculate_depot_info {
 
 sub do_or_die {
   my $self = shift;
-	$self->log("@_");
+	$self->log("RUN) @_");
   system @_ and confess "system(@_) = ", ($? >> 8);
   return;
 }
 
 sub pipe_into_or_die {
 	my ($self, $data, $cmd) = @_;
-	$self->log($cmd);
+	$self->log("PIN) $cmd");
 	open my $fh, "|-", $cmd or confess $!;
 	print $fh $data or confess $!;
 	close $fh or confess $!;
@@ -223,7 +209,7 @@ sub pipe_into_or_die {
 
 sub pipe_out_of_or_die {
 	my ($self, $cmd) = @_;
-	$self->log($cmd);
+	$self->log("POU) $cmd");
 	open my $fh, "-|", $cmd or confess $!;
 	local $/;
 	my $data = <$fh>;
@@ -234,20 +220,20 @@ sub pipe_out_of_or_die {
 # Returns true if success.
 sub do_sans_die {
   my $self = shift;
-	$self->log("@_");
+	$self->log("RUN) @_");
   return !(system @_);
 }
 
 sub do_mkdir {
 	my ($self, $directory) = @_;
-	$self->log("mkdir $directory");
+	$self->log("RUN) mkdir $directory");
 	mkdir $directory or confess "mkdir $directory failed: $!";
 	return;
 }
 
 sub do_rmdir {
 	my ($self, $directory) = @_;
-	$self->log("rmtree $directory");
+	$self->log("RUN) rmtree $directory");
 	rmtree $directory or confess "rmtree $directory failed: $!";
 	return;
 }
@@ -331,7 +317,7 @@ sub do_file_deletion {
 	confess "delete $full_path failed: file doesn't exist" unless -e $full_path;
 	confess "delete $full_path failed: path not to a file" unless -f $full_path;
 
-	$self->log("deleting file $full_path");
+	$self->log("RUN) rm $full_path");
 
 	unlink $full_path or confess "unlink $full_path failed: $!";
 }

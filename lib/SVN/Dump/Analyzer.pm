@@ -25,25 +25,25 @@ has verbose => ( is => 'ro', isa => 'Bool', default => 0 );
 
 sub on_node_add {
 	my ($self, $revision, $path, $kind, $data) = @_;
-	$self->log("r$revision add $kind $path");
+	$self->log("ANL) r$revision add $kind $path");
 	$self->analysis()->consider_add($revision, $path, $kind);
 }
 
 sub on_node_change {
 	my ($self, $revision, $path, $kind, $data) = @_;
-	$self->log("r$revision edit $kind $path");
+	$self->log("ANL) r$revision edit $kind $path");
 	$self->analysis()->consider_change($revision, $path, $kind);
 }
 
 sub on_node_replace {
 	my ($self, $revision, $path, $kind, $data) = @_;
-	$self->log("r$revision replace $kind $path");
+	$self->log("ANL) r$revision replace $kind $path");
 	$self->analysis()->consider_change($revision, $path, $kind);
 }
 
 sub on_node_copy {
 	my ($self, $dst_rev, $dst_path, $kind, $src_rev, $src_path, $text) = @_;
-	$self->log("r$dst_rev copy $kind $dst_path from $src_path r$src_rev");
+	$self->log("ANL) r$dst_rev copy $kind $dst_path from $src_path r$src_rev");
 	$self->analysis()->consider_copy(
 		$dst_rev, $dst_path, $kind, $src_rev, $src_path
 	);
@@ -51,7 +51,7 @@ sub on_node_copy {
 
 sub on_node_delete {
 	my ($self, $revision, $path) = @_;
-	$self->log("r$revision delete $path");
+	$self->log("ANL) r$revision delete $path");
 	$self->analysis()->consider_delete($revision, $path);
 }
 

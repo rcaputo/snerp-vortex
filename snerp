@@ -14,7 +14,7 @@ use Getopt::Long;
 my $replayer_class = "git";
 my (
 	$authors_file, $replay_base, $dump_file_name, $copy_depot_path,
-	$include_regexp,
+	$include_regexp, $analysis_file_name,
 );
 my $verbose = 0;
 my $help = 0;
@@ -30,24 +30,26 @@ my $getopt_okay = GetOptions(
 	'help',         \$help,
 	'experimental', \$agree,
 	'include=s',    \$include_regexp,
+	'analysis=s',   \$analysis_file_name,
 );
 
 if ($help or !$getopt_okay) {
 	die(
 		"$0 usage:\n",
-		"  --replayer=CLASS    how to replay the svn dump file\n",
-		"                         ('git' or 'filesystem' so far)\n",
-		"  --authors=FILENAME  location of git-svn authors file\n",
-		"                         (optional; only for git)\n",
-		"  --dump=FILENAME     location of svn dump file to replay\n",
-		"  --into=PATH         path where the svn dump will be replayed\n",
-		"                         (must not exist)\n",
-		"  --copies=PATH       directory where svn copy files are stored\n",
-		"                         (must not exist)\n",
-		"  --verbose           explain what's happening in great detail\n",
-		"  --help              you're soaking in it.\n",
-		"  --experimental      enable experimental features at one's own risk\n",
-		"  --include=REGEXP    limit replay to paths matching REGEXP\n",
+		"  --replayer=CLASS     how to replay the svn dump file\n",
+		"                          ('git' or 'filesystem' so far)\n",
+		"  --authors=FILENAME   location of git-svn authors file\n",
+		"                          (optional; only for git)\n",
+		"  --dump=FILENAME      location of svn dump file to replay\n",
+		"  --into=PATH          path where the svn dump will be replayed\n",
+		"                          (must not exist)\n",
+		"  --copies=PATH        directory where svn copy files are stored\n",
+		"                          (must not exist)\n",
+		"  --verbose            explain what's happening in great detail\n",
+		"  --help               you're soaking in it.\n",
+		"  --experimental       enable experimental features at one's own risk\n",
+		"  --include=REGEXP     limit replay to paths matching REGEXP\n",
+		"  --analysis=FILENAME  path to snanalyze output XML file\n",
 	);
 }
 
@@ -94,6 +96,15 @@ if (defined $authors_file) {
 	}
 }
 
+if (defined $analysis_file_name) {
+	unless (-e $analysis_file_name) {
+		die "$0: --analysis path ($analysis_file_name) must exist if used\n";
+	}
+	unless (-f $analysis_file_name) {
+		die "$0: --analysis path ($analysis_file_name) must be a file\n";
+	}
+}
+
 unless (defined $dump_file_name and length $dump_file_name) {
 	die "$0: --dump=FILENAME required\n";
 }
@@ -131,6 +142,7 @@ my $replayer = $replayer_class->new(
 	authors_file      => $authors_file,
 	verbose           => $verbose,
 	include_regexp    => $include_regexp,
+	analysis_filename => $analysis_file_name,
 );
 
 $replayer->walk();

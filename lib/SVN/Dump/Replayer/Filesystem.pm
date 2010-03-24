@@ -48,7 +48,7 @@ sub on_file_copy {
 	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
 
 	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
-		"none", $change
+		$change
 	);
 
 	unless (-e $copy_depot_path) {
@@ -160,7 +160,7 @@ after on_revision_done => sub {
 		# TODO - Arborist::on_walk_done might be able to remove defunct
 		# copy sources so they never appear here.
 		my $src_entity = $self->arborist()->get_entity(
-			$copy->src_path(), $revision_id,
+			$revision_id, $copy->src_path(),
 		);
 
 		my $copy_src_path = $self->calculate_path($copy->src_path());
