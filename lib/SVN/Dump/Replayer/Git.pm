@@ -23,7 +23,7 @@ extends 'SVN::Dump::Replayer';
 use Carp qw(croak cluck);
 use File::Path qw(mkpath);
 
-has authors_file    => ( is => 'ro', isa => 'Str' );
+has authors_file    => ( is => 'ro', isa => 'Maybe[Str]' );
 has authors => (
 	is => 'rw',
 	isa => 'HashRef[SVN::Dump::Replayer::Git::Author]',
