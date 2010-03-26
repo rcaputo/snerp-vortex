@@ -2,31 +2,58 @@ Snerp Vortex is an anagram of SVN Exporter.  It aims to be a faster,
 more reliable way to create new repositories from Subversion dumps
 than using git-svn and various abandonment techniques.
 
-I started this project because the svn-to-git methods I'd tried were
-slow and produced unsatisfying results.
+Faster?  On my canonical example repository (POE), Snerp Vortex
+converts 2824 Subversion commits to Git in about 250 seconds.
 
-Snerp Vortex works by replaying a Subversion repository dump into a
-local directory.  After each revision, it performs actions in another
-version control system, such as committing the new repository snapshot
-into git.  It also creates branches and tags as appropriate, and it's
-smart enough to tell the difference between them based on usage---not
-just because a directory is in /branches or /tags.
+Not fast enough?  I'm looking for someone with git-fast-import clue to
+help make it faster.  For comparison, the same repository can be
+converted into a flat filesystem in about 70 seconds.
 
-The end result is a new repository with the significant history of the
-old one.  I say "significant" because some Subversion changes (such as
-property changes) don't map to other systems.
+More satisfying?  Snerp Vortex uses path analysis to detect hints
+about tags and branches.  It then adjusts its assumptions according to
+actual repository use.  Tags that are modified later become branches.
+Branches that are never touched are demoted to tags.
 
-Usage is simple.  See "./snerp --help".
+There is rudimentary support for multiple projects per repository, but
+it needs love.
 
-I consider this program to be "alpha" quality.  It seems to work in a
-limited test, exporting the first 2751 revisions of POE's repository
-(branches, tags and all) in a little under 5 minutes.  To be fair, it
-was reading from and writing to a RAM disk at the time.  See the
-mkramdisk_osx utility in this project.
+---
 
-Snerp Vortex is not widely tested yet.  "It works for me", but it
-chokes on nonstandard repository layouts.  Please help make Snerp
-Vortex robust.
+Snerp Vortex is a chain of three tools.
+
+snanalyze examines a Subversion dump and produces an XML file
+describing its structure.  Sample usage:
+
+	./snanalyze --dump poe.svndump > poe.xml
+
+snassign-gui is a Gtk2 utility to browse an XML repository analysis.
+With it, one can page back and forth through significant revisions to
+see how snanalyze interpreted structural changes.  It's intended to be
+an analysis editor with which a human may assign roles to different
+directories at particular revisions.  Some repositories are just
+hopeless without a human's touch.  Sample usage:
+
+	./snassign-gui --analysis poe.xml
+
+Finally there's snerp itself.  Given a Subversion dump and an XML
+analysis, it will attempt to replay the repository into a new format.
+Sample usage:
+
+	./snerp \
+		--replayer git \
+		--authors $HOME/projects/.authors \
+		--dump $HOME/projects/poe.dump \
+		--analysis $HOME/projects/poe.xml \
+		--tmp $HOME/projects/snerp-tmp \
+		--into $HOME/projects/new-git-repot
+
+All three tools respond to --help.
+
+---
+
+Snerp Vortex is late alpha quality.  It seems to work in limited
+tests, but there's no guarantee it will work for you.  Fixes are
+greatly appreciated.
 
 =========
 OSX Users
@@ -44,9 +71,13 @@ the mkramdisk_osx utility in this project.
 Improvements?
 =============
 
-I have only recently discovered git-fast-import.  I wish I knew about
-it sooner.  Snerp Vortex is flexible enough to use it later, with a
-potential speed boost.
+I've heard that git-fast-import can potentially make Snerp Vortex a
+lot faster.  The program should be flexible enough to support it
+without much fuss.
+
+I may not get around to it, as I'm rapidly running out of Subversion
+repositories to convert.  If you want or need this, please consider
+contributing.
 
 =======
 Testing
@@ -80,7 +111,6 @@ Replay the repository into git.
 		--into=/Volumes/snerp-vortex-workspace/binary-git \
 		--dump=../binary-files.dump \
 		--copies=/Volumes/snerp-vortex-workspace/binary-snerp-copies \
-		--experimental \
 		--verbose
 
 Verify that the replayed binary file works.
