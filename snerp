@@ -40,7 +40,7 @@ if ($help or !$getopt_okay) {
 		"                          ('git' or 'filesystem' so far)\n",
 		"  --authors=FILENAME   location of git-svn authors file\n",
 		"                          (optional; only for git)\n",
-		"  --dump=FILENAME      location of svn dump file to replay\n",
+		"  --dump=FILENAME      location of svn dump file to replay. - for STDIN\n",
 		"  --into=PATH          path where the svn dump will be replayed\n",
 		"                          (must not exist)\n",
 		"  --copies=PATH        directory where svn copy files are stored\n",
@@ -109,11 +109,13 @@ unless (defined $dump_file_name and length $dump_file_name) {
 	die "$0: --dump=FILENAME required\n";
 }
 
-unless (-e $dump_file_name) {
-	die "$0: --dump path ($dump_file_name) doesn't exist\n";
-}
-unless (-f $dump_file_name) {
-	die "$0: --dump path ($dump_file_name) must be a file\n";
+if ($dump_file_name ne '-') {
+    unless (-e $dump_file_name) {
+        die "$0: --dump path ($dump_file_name) doesn't exist\n";
+    }
+    unless (-f $dump_file_name) {
+        die "$0: --dump path ($dump_file_name) must be a file\n";
+    }
 }
 
 $copy_depot_path = "$replay_base.copies" unless (
