@@ -250,13 +250,10 @@ sub on_directory_copy {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->entity());
 
-	# SVN branch name for finding copy source.
-	my $src_branch_name = $change->src_entity_name();
-
 	#my $dst_path = $self->arborist()->calculate_relative_path($change->path());
 	my $dst_path = $change->rel_path();
 
-	$self->do_directory_copy($src_branch_name, $change, $revision, $dst_path);
+	$self->do_directory_copy($change, $revision, $dst_path);
 	$self->directories_needing_add()->{$dst_path} = 1;
 	$self->pop_dir();
 }
@@ -344,12 +341,9 @@ sub on_file_copy {
 	$self->push_dir($self->replay_base());
 	$self->set_branch($revision, $change->entity());
 
-	# SVN branch name for finding copy source.
-	my $src_branch_name = $change->src_entity_name();
-
 	my $dst_path = $change->rel_path();
 
-	$self->do_file_copy($src_branch_name, $change, $revision);
+	$self->do_file_copy($change, $revision);
 	$self->files_needing_add()->{$dst_path} = 1;
 	$self->pop_dir();
 }
@@ -765,7 +759,7 @@ sub set_branch {
 
 # Already in the destination branch.
 sub do_directory_copy {
-	my ($self, $src_branch_name, $change, $revision, $branch_rel_path) = @_;
+	my ($self, $change, $revision, $branch_rel_path) = @_;
 
 	confess "cp to $branch_rel_path failed: path exists" if -e $branch_rel_path;
 
@@ -789,7 +783,7 @@ sub do_directory_copy {
 }
 
 sub do_file_copy {
-	my ($self, $src_branch_name, $change, $revision) = @_;
+	my ($self, $change, $revision) = @_;
 
 	my $branch_rel_path = $change->rel_path();
 
@@ -813,21 +807,6 @@ sub do_file_copy {
 	# If content isn't provided, however, copy the file from the depot.
 	$self->copy_file_or_die($copy_depot_path, $branch_rel_path);
 	$self->decrement_copy_source($change, $revision, $copy_depot_path);
-}
-
-sub decrement_copy_source {
-	my ($self, $change, $revision, $copy_depot_path) = @_;
-
-	my $copy_source = $self->arborist()->get_copy_source_then(
-		$change->src_rev,
-		$change->src_path,
-	);
-
-	confess "what's going on" unless defined $copy_source;
-
-	$self->do_file_deletion($copy_depot_path) unless (
-		$copy_source->delete_ref($revision->id(), $change->path())
-	);
 }
 
 1;

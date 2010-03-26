@@ -29,6 +29,7 @@ has dir => (
 		delete $self->refs()->{$dst_rev}->{$dst_path};
 		return 1 if scalar keys %{$self->refs()->{$dst_rev}};
 		delete $self->refs()->{$dst_rev};
+		return 1 if scalar keys %{$self->refs()};
 		return;
 	}
 
@@ -556,6 +557,7 @@ sub get_entity_then {
 
 	# Find the described change.  Return it if it's an entity.
 	my $change_then = $self->get_path_change_then($revision, $path);
+	confess "why" unless $change_then;
 	return $change_then if $change_then->is_entity();
 
 	# Otherwise jump to the entity holding the change.

@@ -17,12 +17,20 @@ sub on_tag_directory_creation {
 
 sub on_branch_directory_copy {
 	my ($self, $change, $revision) = @_;
-	$self->do_directory_copy($change, $self->qualify_change_path($change));
+	$self->do_directory_copy(
+		$change,
+		$revision,
+		$self->qualify_change_path($change)
+	);
 }
 
 sub on_tag_directory_copy {
 	my ($self, $change, $revision) = @_;
-	$self->do_directory_copy($change, $self->qualify_change_path($change));
+	$self->do_directory_copy(
+		$change,
+		$revision,
+		$self->qualify_change_path($change)
+	);
 }
 
 sub on_file_creation {
@@ -58,11 +66,13 @@ sub on_file_copy {
 	# Weirdly, the copy source may not be authoritative.
 	if (defined $change->content()) {
 		$self->write_change_data($change, $full_dst_path);
+		$self->decrement_copy_source($change, $revision, $copy_depot_path);
 		return;
 	}
 
 	# If content isn't provided, however, copy the file from the depot.
 	$self->copy_file_or_die($copy_depot_path, $full_dst_path);
+	$self->decrement_copy_source($change, $revision, $copy_depot_path);
 }
 
 sub on_directory_creation {
@@ -87,7 +97,11 @@ sub on_tag_directory_deletion {
 
 sub on_directory_copy {
 	my ($self, $change, $revision) = @_;
-	$self->do_directory_copy($change, $self->qualify_change_path($change));
+	$self->do_directory_copy(
+		$change,
+		$revision,
+		$self->qualify_change_path($change)
+	);
 }
 
 sub on_rename {
@@ -106,12 +120,12 @@ sub on_tag_rename {
 }
 
 sub do_directory_copy {
-	my ($self, $change, $full_dst_path) = @_;
+	my ($self, $change, $revision, $full_dst_path) = @_;
 
 	die "cp to $full_dst_path failed: path exists" if -e $full_dst_path;
 
 	my ($copy_depot_descriptor, $copy_depot_path) = $self->get_copy_depot_info(
-		"none", $change
+		$change
 	);
 
 	# Directory copy sources are tarballs.
@@ -125,6 +139,8 @@ sub do_directory_copy {
 	$self->push_dir($full_dst_path);
 	$self->do_or_die("tar", "xzf", $copy_depot_path);
 	$self->pop_dir();
+
+	$self->decrement_copy_source($change, $revision, $copy_depot_path);
 }
 
 ### Mid-level tracking.
@@ -140,48 +156,39 @@ after on_walk_begin => sub {
 after on_revision_done => sub {
 	my ($self, $revision_id) = @_;
 
-	# TODO - After also doing the git version, consider how we'll
-	# abstract this code back into Arborist to minimize per-VCS code.
-
 	# Changes are done.  Remember any copy sources that pull from this
 	# revision.
-	COPY: foreach my $copy (
-		map { @$_ }
-		values %{$self->arborist()->copy_sources()->{$revision_id} || {}}
-	) {
-		my ($copy_depot_descriptor, $copy_depot_path) =
-			$self->calculate_depot_info(
-				"none", $copy->src_path(), $copy->src_revision()
+
+	$self->push_dir($self->replay_base());
+
+	my $copy_sources = $self->arborist()->get_copy_sources($revision_id);
+	COPY: while (my ($cps_path, $cps_obj) = each %$copy_sources) {
+		my $cps_kind = $cps_obj->kind();
+		$self->log("CPY) saving $cps_kind $cps_path for later.");
+
+		# Get the copy depot information, based on absolute path/rev tuples.
+		my ($copy_depot_id, $copy_depot_path) = $self->calculate_depot_info(
+			$cps_path, $revision_id
+		);
+
+		# Tarball a directory.
+		if ($cps_kind eq "dir") {
+			$copy_depot_path .= ".tar.gz";
+			$self->log(
+				"CPY) Saving directory $cps_path in: $copy_depot_path"
 			);
-
-		# Tags don't necessarily exist.
-		# TODO - However, this is a per-VCS behavior, so the decision
-		# belongs in a per-VCS subclass.
-		# TODO - Arborist::on_walk_done might be able to remove defunct
-		# copy sources so they never appear here.
-		my $src_entity = $self->arborist()->get_entity(
-			$revision_id, $copy->src_path(),
-		);
-
-		my $copy_src_path = $self->calculate_path($copy->src_path());
-
-		$self->log("CPY) Copy from entity $src_entity");
-		$self->log("CPY) Copy from type ", $src_entity->type()) if $src_entity;
-
-		die "copy source path $copy_src_path doesn't exist" unless (
-			-e $copy_src_path
-		);
-
-		if (-d $copy_src_path) {
-			$self->push_dir($copy_src_path);
-			$self->do_or_die("tar", "czf", "$copy_depot_path.tar.gz", ".");
+			$self->push_dir($cps_path);
+			$self->do_or_die("tar", "czf", $copy_depot_path, ".");
 			$self->pop_dir();
 			next COPY;
 		}
 
-		$self->copy_file_or_die($copy_src_path, $copy_depot_path);
+		$self->log("CPY) Saving file $cps_path in: $copy_depot_path");
+		$self->copy_file_or_die($cps_path, $copy_depot_path);
 		next COPY;
 	}
+
+	$self->pop_dir();
 };
 
 ### Low-level helpers.

@@ -346,6 +346,21 @@ sub do_rename {
 	);
 }
 
+sub decrement_copy_source {
+	my ($self, $change, $revision, $copy_depot_path) = @_;
+
+	my $copy_source = $self->arborist()->get_copy_source_then(
+		$change->src_rev,
+		$change->src_path,
+	);
+
+	confess "what's going on" unless defined $copy_source;
+
+	$self->do_file_deletion($copy_depot_path) unless (
+		$copy_source->delete_ref($revision->id(), $change->path())
+	);
+}
+
 ### Virtual methods to override.
 
 sub on_branch_directory_copy { confess "must override method"; }

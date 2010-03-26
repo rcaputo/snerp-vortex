@@ -8,7 +8,6 @@ package SVN::Dump::Arborist;
 use Moose;
 
 use SVN::Dump::Entity;
-use SVN::Dump::Snapshot;
 use SVN::Dump::Revision;
 use SVN::Dump::Copy;
 use SVN::Analysis;
@@ -98,9 +97,9 @@ sub finalize_revision {
 sub add_new_node {
 	my ($self, $revision, $path, $kind, $content) = @_;
 
-	my ($node, $change);
+	my $change;
+
 	if ($kind eq "dir") {
-		$node = SVN::Dump::Snapshot::Dir->new(revision => $revision);
 		$change = SVN::Dump::Change::Mkdir->new(
 			path      => $path,
 			analysis  => $self->get_analysis_then($revision, $path),
@@ -108,9 +107,6 @@ sub add_new_node {
 		);
 	}
 	elsif ($kind eq "file") {
-		$node = SVN::Dump::Snapshot::File->new(
-			revision  => $revision,
-		);
 		$change = SVN::Dump::Change::Mkfile->new(
 			path      => $path,
 			content   => $content,
@@ -223,7 +219,7 @@ sub get_entity {
 
 sub get_container_entity_then {
 	my ($self, $revision, $path) = @_;
-	$path =~ s!/+[^/]*/*$!!;
+	$path =~ s!/*[^/]*/*$!!;
 	return $self->analysis()->get_entity_then($revision, $path);
 }
 
@@ -241,7 +237,7 @@ sub log {
 
 sub get_container_analysis_then {
 	my ($self, $revision, $path) = @_;
-	$path =~ s!/+[^/]+/*$!!;
+	$path =~ s!/*[^/]+/*$!!;
 	return $self->analysis()->get_path_change_then($revision, $path);
 }
 
