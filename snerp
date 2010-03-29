@@ -110,12 +110,12 @@ unless (defined $dump_file_name and length $dump_file_name) {
 }
 
 if ($dump_file_name ne '-') {
-    unless (-e $dump_file_name) {
-        die "$0: --dump path ($dump_file_name) doesn't exist\n";
-    }
-    unless (-f $dump_file_name) {
-        die "$0: --dump path ($dump_file_name) must be a file\n";
-    }
+	unless (-e $dump_file_name) {
+		die "$0: --dump path ($dump_file_name) doesn't exist\n";
+	}
+	unless (-f $dump_file_name) {
+		die "$0: --dump path ($dump_file_name) must be a file\n";
+	}
 }
 
 $copy_depot_path = "$replay_base.copies" unless (
