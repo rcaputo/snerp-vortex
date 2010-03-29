@@ -1,0 +1,57 @@
+#!/usr/bin/env perl
+
+use warnings;
+use strict;
+use lib qw(./lib);
+
+use Getopt::Long;
+use SVN::Dump;
+
+my ($dump_file_name, $verbose, $help);
+my $getopt_okay = GetOptions(
+	'dump=s',       \$dump_file_name,
+	'verbose',      \$verbose,
+	'help',         \$help,
+);
+
+if ($help or !$getopt_okay) {
+	die(
+		"$0 usage:\n",
+		"  --dump=FILENAME  location of svn dump file to replay. - for STDIN\n",
+		"  --verbose        explain what's happening in great detail\n",
+		"  --help           you're soaking in it.\n",
+	);
+}
+
+unless (defined $dump_file_name and length $dump_file_name) {
+	die "$0: --dump=FILENAME required\n";
+}
+
+if ($dump_file_name ne '-') {
+	unless (-e $dump_file_name) {
+		die "$0: --dump path ($dump_file_name) doesn't exist\n";
+	}
+	unless (-f $dump_file_name) {
+		die "$0: --dump path ($dump_file_name) must be a file\n";
+	}
+}
+
+my $dump = SVN::Dump->new({ file => $dump_file_name });
+
+# Only print the dump header.
+#print $dump->as_string();
+
+# Print each record.
+my $record;
+while (
+	$record = (
+		($record && $record->get_included_record()) || $dump->next_record()
+	)
+) {
+	my $header = $record->get_headers_block();
+	if ($header) {
+		my $kind = $header->get('Node-kind');
+		$record->set_text("snubbed") if $kind and $kind eq "file";
+	}
+	print $record->as_string();
+}

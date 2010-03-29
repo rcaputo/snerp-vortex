@@ -51,6 +51,24 @@ All three tools respond to --help.
 
 ---
 
+Snerp Vortex comes with some utilities and scripts that will
+eventually be cleaned up and organized.  Until then:
+
+	mkramdisk_osx - Create a 1 GB RAM disk with a case-sensitive
+	filesystem.
+
+	snub - Snub the file contents of a dump.  Retains the file and
+	directory structure, but the resulting dump and replays are much
+	smaller.  Written for Ævar Arnfjörð Bjarmason's six-gigabyte dump,
+	which triggers a hard to reproduce bug.
+
+	diff-test - Diffs a svn and git checkout of the same repository at
+	the same revision.
+
+	dev-* and test-* - One-off test scripts.
+
+---
+
 Snerp Vortex is late alpha quality.  It seems to work in limited
 tests, but there's no guarantee it will work for you.  Fixes are
 greatly appreciated.
@@ -100,6 +118,11 @@ Dump the repository.
 
 	cd ..
 	svnadmin dump binary-svn > binary-svn.dump
+
+If it's a really huge repository, then early debugging might go better
+if the contents of all the files is omitted.
+
+	cat huge.dump | ./snub --file - > smaller.dump
 
 Replay the repository into git.
 
