@@ -139,11 +139,16 @@ sub on_node_change {
 	$self->arborist()->touch_node($revision, $path, $kind, $data);
 }
 
-# I'm led to believe that node-action "replace" is another form of
-# node-action "change".  This method exists as a hook for subclasses
-# to do something different.
+# According to the Red Bean Subersion book, "replacement" happens when
+# a node is scheduled for deletion and addition in the same commit.
+# As of svn 1.6.6 I'm not sure how to do this for a directory.  Maybe
+# older versions permitted it?
+# TODO - We may need a special "replace" operation if having deletion
+# and addition in the same revision is confusing.
 sub on_node_replace {
-	goto &on_node_change;
+	my ($self, $revision, $path, $kind, $data) = @_;
+	$self->on_node_delete($revision, $path);
+	goto &on_node_add;
 }
 
 sub on_node_delete {

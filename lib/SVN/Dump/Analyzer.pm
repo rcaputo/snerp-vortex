@@ -35,10 +35,17 @@ sub on_node_change {
 	$self->analysis()->consider_change($revision, $path, $kind);
 }
 
+# According to the Red Bean Subersion book, "replacement" happens when
+# a node is scheduled for deletion and addition in the same commit.
+# As of svn 1.6.6 I'm not sure how to do this for a directory.  Maybe
+# older versions permitted it?
+# TODO - We may need a special "replace" operation if having deletion
+# and addition in the same revision is confusing.
 sub on_node_replace {
 	my ($self, $revision, $path, $kind, $data) = @_;
 	$self->log("ANL) r$revision replace $kind $path");
-	$self->analysis()->consider_change($revision, $path, $kind);
+	$self->analysis()->consider_delete($revision, $path);
+	$self->analysis()->consider_add($revision, $path, $kind);
 }
 
 sub on_node_copy {
