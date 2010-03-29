@@ -38,20 +38,19 @@ if ($dump_file_name ne '-') {
 
 my $dump = SVN::Dump->new({ file => $dump_file_name });
 
-# Only print the dump header.
-#print $dump->as_string();
-
 # Print each record.
+my $sequence = 0;
+
 my $record;
 while (
 	$record = (
 		($record && $record->get_included_record()) || $dump->next_record()
 	)
 ) {
-	my $header = $record->get_headers_block();
-	if ($header) {
-		my $kind = $header->get('Node-kind');
-		$record->set_text("snubbed") if $kind and $kind eq "file";
+	if ($verbose and $record->type() eq "revision") {
+		my $header = $record->get_headers_block();
+		warn "Revision ", $header->{'Revision-number'}, "...\n";
 	}
+	$record->set_text("snubbed " . ++$sequence) if $record->has_text();
 	print $record->as_string();
 }
