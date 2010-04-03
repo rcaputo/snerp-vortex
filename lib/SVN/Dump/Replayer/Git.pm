@@ -618,8 +618,11 @@ sub git_commit {
 
 	my $git_commit_message_file = "/tmp/git-commit-$$.txt";
 
+	my $message = $revision->message();
+	$message = "(no message)" unless defined $message and length $message;
+
 	open my $tmp, ">", $git_commit_message_file or confess $!;
-	print $tmp $revision->message() or confess $!;
+	print $tmp $message or confess $!;
 	close $tmp or confess $!;
 
 	$self->git_env_setup($revision);
