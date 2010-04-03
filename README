@@ -51,6 +51,15 @@ All three tools respond to --help.
 
 ---
 
+Snerp Vortex requires a Subversion dump file, which is generally
+created by running svnadmin dump on the machine that hosts the
+repository.  I've just come across a remote svn dump utility that may
+help when you don't have direct access to the svn host:
+
+http://rsvndump.sourceforge.net/
+
+---
+
 Snerp Vortex comes with some utilities and scripts that will
 eventually be cleaned up and organized.  Until then:
 
