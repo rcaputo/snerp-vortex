@@ -6,10 +6,7 @@ use strict;
 use Digest::MD5 qw(md5_hex);
 use Digest::SHA1 qw(sha1_hex);
 
-use lib qw(
-	/home/troc/projects/git/SVN-Dump/lib
-	./lib
-);
+use lib qw(../SVN-Dump/lib ./lib);
 
 use Getopt::Long;
 use SVN::Dump;
