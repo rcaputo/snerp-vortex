@@ -2,7 +2,10 @@
 
 use warnings;
 use strict;
-use lib qw(./lib);
+use lib qw(
+	/home/troc/projects/git/SVN-Dump/lib
+	./lib
+);
 
 use Getopt::Long;
 use SVN::Dump;

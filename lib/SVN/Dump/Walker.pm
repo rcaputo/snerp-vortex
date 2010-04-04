@@ -7,6 +7,8 @@ package SVN::Dump::Walker;
 # TODO - Basically done.  Think twice if you think it requires
 # modification.
 
+use lib qw(/home/troc/projects/git/SVN-Dump/lib);
+
 use Moose;
 use SVN::Dump;
 
