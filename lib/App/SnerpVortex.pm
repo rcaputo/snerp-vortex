@@ -1,3 +1,17 @@
+package App::SnerpVortex;
+use strict;
+use warnings;
+
+1;
+
+__END__
+
+=head1 NAME
+
+App::SnerpVortex - Replay a Subversion dump into Git/Filesystem/etc.
+
+=head1 About
+
 Snerp Vortex is an anagram of SVN Exporter.  It aims to be a faster,
 more reliable way to create new repositories from Subversion dumps
 than using git-svn and various abandonment techniques.
@@ -17,14 +31,20 @@ Branches that are never touched are demoted to tags.
 There is rudimentary support for multiple projects per repository, but
 it needs love.
 
----
+=head2 Toolset
 
 Snerp Vortex is a chain of three tools.
+
+=over
+
+=item snanalyze
 
 snanalyze examines a Subversion dump and produces an XML file
 describing its structure.  Sample usage:
 
 	./snanalyze --dump poe.svndump > poe.xml
+
+=item snassign-gui
 
 snassign-gui is a Gtk2 utility to browse an XML repository analysis.
 With it, one can page back and forth through significant revisions to
@@ -34,6 +54,8 @@ directories at particular revisions.  Some repositories are just
 hopeless without a human's touch.  Sample usage:
 
 	./snassign-gui --analysis poe.xml
+
+=item snerp
 
 Finally there's snerp itself.  Given a Subversion dump and an XML
 analysis, it will attempt to replay the repository into a new format.
@@ -49,7 +71,7 @@ Sample usage:
 
 All three tools respond to --help.
 
----
+=back
 
 Snerp Vortex requires a Subversion dump file, which is generally
 created by running svnadmin dump on the machine that hosts the
@@ -57,8 +79,6 @@ repository.  I've just come across a remote svn dump utility that may
 help when you don't have direct access to the svn host:
 
 http://rsvndump.sourceforge.net/
-
----
 
 Snerp Vortex comes with some utilities and scripts that will
 eventually be cleaned up and organized.  Until then:
@@ -76,15 +96,11 @@ eventually be cleaned up and organized.  Until then:
 
 	dev-* and test-* - One-off test scripts.
 
----
-
 Snerp Vortex is late alpha quality.  It seems to work in limited
 tests, but there's no guarantee it will work for you.  Fixes are
 greatly appreciated.
 
-=========
-OSX Users
-=========
+=head1 OSX Users
 
 Get yourselves a case-sensitive filesystem.  This is easier done than
 said.  Disk Utility can create empty random-access disk images with
@@ -94,9 +110,7 @@ accessible like any other filesystem.
 Even better, build a RAM disk if you have the memory to spare.  See
 the mkramdisk_osx utility in this project.
 
-=============
-Improvements?
-=============
+=head1 Improvements?
 
 I've heard that git-fast-import can potentially make Snerp Vortex a
 lot faster.  The program should be flexible enough to support it
@@ -106,9 +120,7 @@ I may not get around to it, as I'm rapidly running out of Subversion
 repositories to convert.  If you want or need this, please consider
 contributing.
 
-=======
-Testing
-=======
+=head1 Testing
 
 Until there's a proper test framework, here's the plan from a recent
 test I ran.
@@ -151,9 +163,7 @@ Verify that the replayed binary file works.
 
 The distribution's t/dumps directory is the repository for test dumps.
 
-============
-Design Notes
-============
+=head1 Design Notes
 
 There are multiple kinds of branch, some of which don't map to Git's
 idea of branches.  For example, there's the branch that is someone's
@@ -178,3 +188,5 @@ Subversion can tag subdirectories within trunk.  After all, tags are
 just directory copies.  Git cannot.  Subversion tags are translated to
 Git by tagging HEAD at the relative moment when the Subversion tree
 has been tagged.  Is there a better way to do this?
+
+=cut
