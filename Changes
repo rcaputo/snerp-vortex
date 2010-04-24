@@ -1,5 +1,7 @@
-Revision history for $module
+Revision history for App::SnerpVortex
 
 {{$NEXT}}
 
-    - 
+    - First CPAN release.
+
+vim: set ts=4 sw=4 expandtab
