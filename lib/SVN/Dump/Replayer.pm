@@ -39,7 +39,7 @@ has include_regexp => (
 	isa	=> 'Maybe[RegexpRef]',
 );
 
-has analysis_filename => ( is => 'rw', isa => 'Maybe[Str]' );
+has db_file_name => ( is => 'rw', isa => 'Str' );
 
 has arborist => (
 	is => 'ro',
@@ -49,7 +49,7 @@ has arborist => (
 		my $self = shift;
 		return SVN::Dump::Arborist->new(
 			verbose           => $self->verbose(),
-			analysis_filename => $self->analysis_filename(),
+			db_file_name      => $self->db_file_name(),
 			svn_dump_filename => $self->svn_dump_filename(),
 		);
 	},
@@ -74,14 +74,13 @@ sub on_revision_done {
 
 	# Apply all the changes it represents.
 	CHANGE: foreach my $change (@{$revision->changes()}) {
-
 		my $operation    = $change->operation();
 		my $dst_analysis = $change->analysis();
 
 		$self->log("REP) doing: $operation ", $change->path());
 		$self->log(
-			"REP) entity: ", $dst_analysis->entity_type(),
-			" ", $dst_analysis->entity_name()
+			"REP) entity: ", $dst_analysis->ent_type(),
+			" ", $dst_analysis->ent_name()
 		);
 		$self->log(
 			"REP) status: ", ($dst_analysis->is_entity() ? "is" : "is not"),
@@ -90,7 +89,7 @@ sub on_revision_done {
 
 		# Change is an entity.  Perhaps something is tagged or branched?
 		if ($change->is_entity()) {
-			my $entity_type = $dst_analysis->entity_type();
+			my $entity_type = $dst_analysis->ent_type();
 
 			if ($entity_type eq "branch") {
 				$operation = "branch_$operation";
@@ -314,7 +313,9 @@ sub write_new_file {
 sub write_change_data {
 	my ($self, $change, $full_path) = @_;
 	open my $fh, ">", $full_path or confess "create $full_path failed: $!";
-	print $fh $change->content() or confess $!;
+	if (defined $change->content()) {
+		print $fh $change->content() or confess $!;
+	}
 	close $fh or confess $!;
 }
 
@@ -353,10 +354,10 @@ sub do_rename {
 
 sub decrement_copy_source {
 	my ($self, $change, $revision, $copy_depot_path) = @_;
-
-	my $copy_source = $self->arborist()->get_copy_source_then(
-		$change->src_rev,
-		$change->src_path,
+return;
+	my $copy_source = $self->arborist()->get_copy_source_for_path(
+		$change->src_rev(),
+		$change->src_path(),
 	);
 
 	confess "what's going on" unless defined $copy_source;

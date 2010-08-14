@@ -38,17 +38,22 @@ sub push_change {
 		# TODO - Reblessing would be easier. Is it an option?
 		my $previous_change = pop @{$self->changes()};
 
-		# Renaming cannot change the entity type.  One may not rename a
-		# branch into a tag, a file into a directory, etc.
-		$previous_change->entity_type($previous_change->src_entity_type());
+		# Renaming cannot change the entity type.
+		# One may not rename a branch into a tag, a file into a directory,
+		# etc.  This is a sanity check for the entity recognition phase.
+		confess(
+			"src type ", $previous_change->src_entity_type(),
+			" doesn't match dst type ", $previous_change->entity_type()
+		) if $previous_change->src_entity_type() ne $previous_change->entity_type();
+
+		# TODO - Change the type?  No!  Auto fixup should have 
+		#$previous_change->entity_type($previous_change->src_entity_type());
 
 		$change = SVN::Dump::Change::Rename->new(
 			path          => $previous_change->path(),
-			entity        => $previous_change->entity(),
 			analysis      => $previous_change->analysis(),
 			src_rev       => $previous_change->src_rev(),
 			src_path      => $previous_change->src_path(),
-			src_entity    => $previous_change->src_entity(),
 			src_analysis  => $previous_change->src_analysis(),
 		);
 	}

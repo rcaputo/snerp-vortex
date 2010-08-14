@@ -65,7 +65,12 @@ sub fix_path {
 	my $path_lop = $self->path_lop();
 	my $path_prepend = $self->path_prepend();
 
-	$path =~ s!^\Q$path_lop\E(?:/|$)!$path_prepend!;
+	$path =~ s!^\Q$path_lop\E(?:/|$)!$path_prepend! if (
+		defined $path_lop and length $path_lop
+	);
+	return($path_prepend . $path) if (
+		defined $path_prepend and length $path_prepend
+	);
 
 	return $path;
 }

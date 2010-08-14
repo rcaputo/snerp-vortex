@@ -18,7 +18,7 @@ use YAML::Syck; # for debugging
 use Carp qw(croak);
 use Storable qw(dclone);
 
-has analysis_filename => ( is => 'rw', isa => 'Maybe[Str]' );
+has db_file_name => ( is => 'rw', isa => 'Str' );
 
 has analysis => (
 	is      => 'rw',
@@ -26,27 +26,14 @@ has analysis => (
 	lazy    => 1,
 	default => sub {
 		my $self = shift;
-
-		my $analysis = SVN::Analysis->new( verbose => $self->verbose() );
-
-		# Load a prepared file.
-		if (defined $self->analysis_filename()) {
-			$analysis->init_from_xml_file($self->analysis_filename());
-			$analysis->analyze();
-			return $analysis;
-		}
-
-		# Otherwize analyze the svn dump in place.
-		my $analyzer = SVN::Dump::Analyzer->new(
-			svn_dump_filename => $self->svn_dump_filename(),
-			verbose           => $self->verbose(),
+		return SVN::Analysis->new(
+			verbose       => $self->verbose(),
+			db_file_name  => $self->db_file_name(),
 		);
-		$analyzer->walk();
-		return $analyzer->analysis();
 	},
 );
 
-has verbose => ( is => 'ro', isa => 'Bool', default => 0 );
+has verbose           => ( is => 'ro', isa => 'Bool', default => 0 );
 has svn_dump_filename => ( is => 'ro', isa => 'Str' );
 
 has pending_revision => (
@@ -102,16 +89,14 @@ sub add_new_node {
 	if ($kind eq "dir") {
 		$change = SVN::Dump::Change::Mkdir->new(
 			path      => $path,
-			analysis  => $self->get_analysis_then($revision, $path),
-			entity    => $self->get_entity_then($revision, $path),
+			analysis  => $self->get_dir_analysis_info($revision, $path),
 		);
 	}
 	elsif ($kind eq "file") {
 		$change = SVN::Dump::Change::Mkfile->new(
 			path      => $path,
 			content   => $content,
-			analysis  => $self->get_container_analysis_then($revision, $path),
-			entity    => $self->get_container_entity_then($revision, $path),
+			analysis  => $self->get_file_analysis_info($revision, $path),
 		);
 	}
 	else {
@@ -126,26 +111,22 @@ sub add_new_node {
 sub copy_node {
 	my ($self, $src_rev, $src_path, $revision, $dst_path, $kind, $data) = @_;
 
-	my ($get_analysis_method, $get_entity_method);
+	my $get_analysis_method;
 
 	if ($kind eq "file") {
-		$get_analysis_method  = "get_container_analysis_then";
-		$get_entity_method    = "get_container_entity_then";
+		$get_analysis_method  = "get_file_analysis_info";
 	}
 	else {
-		$get_analysis_method  = "get_analysis_then";
-		$get_entity_method    = "get_entity_then";
+		$get_analysis_method  = "get_dir_analysis_info";
 	}
 
 	my $change_class = "SVN::Dump::Change::Cp$kind";
 	$self->pending_revision()->push_change(
 		$change_class->new(
 			analysis      => $self->$get_analysis_method($revision, $dst_path),
-			entity        => $self->$get_entity_method($revision, $dst_path),
 			path          => $dst_path,
 			content       => $data,
 			src_analysis  => $self->$get_analysis_method($src_rev, $src_path),
-			src_entity    => $self->$get_entity_method($src_rev, $src_path),
 			src_path      => $src_path,
 			src_rev       => $src_rev,
 		)
@@ -165,8 +146,7 @@ sub touch_node {
 			SVN::Dump::Change::Edit->new(
 				path      => $path,
 				content   => $content,
-				analysis  => $self->get_container_analysis_then($revision, $path),
-				entity    => $self->get_container_entity_then($revision, $path),
+				analysis  => $self->get_file_analysis_info($revision, $path),
 			)
 		);
 	}
@@ -180,29 +160,65 @@ sub delete_node {
 	my ($self, $path, $revision) = @_;
 
 	# Succeeds if directory.
-	my $analysis = $self->get_analysis_then($revision, $path);
+	my $analysis = $self->get_dir_analysis_info($revision, $path);
 
 	my ($entity, $deletion_class);
 	if ($analysis) {
 		$deletion_class = "SVN::Dump::Change::Rmdir";
-		$entity = $self->get_entity_then($revision, $path);
 	}
 	else {
 		$deletion_class = "SVN::Dump::Change::Rmfile";
-		$analysis = $self->get_container_analysis_then($revision, $path);
-		$entity = $self->get_container_entity_then($revision, $path);
+		$analysis = $self->get_file_analysis_info($revision, $path);
 	}
 
 	$self->pending_revision()->push_change(
 		$deletion_class->new(
 			path      => $path,
 			analysis  => $analysis,
-			entity    => $entity,
 		)
 	);
 
 	return;
 }
+
+# Return all copy sources for a particular revision.
+sub get_copy_sources_for_revision {
+	my ($self, $revision) = @_;
+	return $self->analysis()->get_copy_sources_for_revision($revision);
+}
+
+sub get_all_copy_sources {
+	my $self = shift;
+	return $self->analysis()->get_all_copy_sources();
+}
+
+sub get_all_copies_for_src {
+	my ($self, $src) = @_;
+	return $self->analysis()->get_all_copies_for_src($src);
+}
+
+sub ignore_copy {
+	my ($self, $copy) = @_;
+	return $self->analysis()->ignore_copy($copy);
+}
+
+# Return an Analysis Dir object for the revision,path tuple.
+sub get_dir_analysis_info {
+	my ($self, $revision, $path) = @_;
+	return $self->analysis()->get_dir_info($path, $revision);
+}
+
+# The caller has a file.  Get the analysis for its container dir.
+# Basically, strip the filename off the path before getting info.
+sub get_file_analysis_info {
+	my ($self, $revision, $path) = @_;
+	$path =~ s!/*[^/]+$!!;
+	return $self->analysis()->get_dir_info($path, $revision);
+}
+
+1;
+
+__END__
 
 ###################
 ### Helper methods.
@@ -217,11 +233,6 @@ sub get_entity {
 	return $self->analysis()->get_entity_then($revision, $path);
 }
 
-sub get_container_entity_then {
-	my ($self, $revision, $path) = @_;
-	$path =~ s!/*[^/]*/*$!!;
-	return $self->analysis()->get_entity_then($revision, $path);
-}
 
 #sub DEMOLISH {
 #	my $self = shift;
@@ -235,11 +246,6 @@ sub log {
 	print time() - $^T, " ", join("", @_), "\n";
 }
 
-sub get_container_analysis_then {
-	my ($self, $revision, $path) = @_;
-	$path =~ s!/*[^/]+/*$!!;
-	return $self->analysis()->get_path_change_then($revision, $path);
-}
 
 sub get_analysis_then {
 	my ($self, $revision, $path) = @_;
@@ -254,21 +260,6 @@ sub get_entity_then {
 sub map_entity_names {
 	my ($self, $entity_name_map) = @_;
 	$self->analysis()->map_entity_names($entity_name_map);
-}
-
-sub get_copy_sources {
-	my ($self, $revision) = @_;
-	return $self->analysis()->get_copy_sources_then($revision);
-}
-
-sub get_copy_source_then {
-	my ($self, $revision, $path) = @_;
-	return $self->analysis()->get_copy_source_then($revision, $path);
-}
-
-sub get_all_copy_sources {
-	my $self = shift;
-	return $self->analysis()->copy_sources();
 }
 
 1;

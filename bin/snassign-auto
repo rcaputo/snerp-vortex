@@ -1,0 +1,90 @@
+#!/usr/bin/env perl
+
+# Given a snaalyze sqlite database, automatically try to recognize
+# tags, branches, and subprojects.
+
+use warnings;
+use strict;
+use lib qw(./lib);
+
+use Getopt::Long;
+use SVN::Analysis;
+
+my ($help, $analysis_db);
+my $getopt_okay = GetOptions(
+	"help"        => \$help,
+	"analysis=s"  => \$analysis_db,
+);
+
+if ($help or !$getopt_okay) {
+	die(
+		"$0 usage:\n",
+		"  --analysis=FILENAME  location of snanalyze sqlite database\n",
+		"  --help               you're soaking in it.\n",
+	);
+}
+
+die "$0: --analysis=FILENAME required\n" unless (
+	defined $analysis_db and length $analysis_db
+);
+die "$0: --analysis path ($analysis_db) doesn't exist\n" unless (
+	-e $analysis_db
+);
+die "$0: --analysis path ($analysis_db) must be a file\n" unless (
+	-f $analysis_db
+);
+
+### Load the Subversion analysis.
+
+warn time(), " attaching to database...\n";
+my $analysis = SVN::Analysis->new(db_file_name => $analysis_db);
+
+warn time(), " analyzing...\n";
+$analysis->analyze();
+
+warn time(), " finding tags, etc...\n";
+$analysis->auto_tag(\&get_entity_hint);
+
+warn time(), " fixing copy targets...\n";
+$analysis->fix_copy_targets();
+
+warn time(), " done.\n";
+exit;
+
+sub get_entity_hint {
+	my ($path, $rev_first, $op_first, $rev_last, $op_last, $is_modified) = @_;
+
+	# Returns (entity type, entity name, prefix to remove, prefix to prepend);
+
+	# Prefixes to remove must not end in path separators.
+
+	# Branches and tags.
+	return("branch", "branch-$2", $1, "") if (
+		$path =~ m!^(branch(?:es)?/([^/]+))(?:/|$)!
+	);
+	return("tag", "tag-$2", $1, "") if (
+		$path =~ m!^(tags?/([^/]+))(?:/|$)!
+	);
+	return("branch", "master", $1, "") if (
+		$path =~ m!^(trunk)(?:/|$)!
+	);
+
+	# Special project paths.  Nothing to do.
+	#	return("branch", "proj-root", "", "") if (
+	#		$path =~ m!^[^/]+/(trunk|tags?|branch(?:es)?)$!
+	#	);
+
+	# Project directories.
+	return("branch", "proj-$2", $1, "") if (
+		$path =~ m!^(([^/]+)/trunk)(?:/|$)!
+	);
+	return("branch", "proj-$2-branch-$3", $1, "") if (
+		$path =~ m!^(([^/]+)/branch(?:es)?/([^/]+))(?:/|$)!
+	);
+	return("tag", "proj-$2-tag-$3", "$1", "") if (
+		$path =~ m!^(([^/]+)/tags?/([^/]+))(?:/|$)!
+	);
+
+	# Catch-all.  Must go at the end.
+	return("branch", "master", "", "");
+}

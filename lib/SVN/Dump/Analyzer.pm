@@ -14,8 +14,19 @@ has analysis => (
 	lazy    => 1,
 	default => sub {
 		my $self = shift;
-		SVN::Analysis->new( verbose => $self->verbose() );
+		my $analysis = SVN::Analysis->new(
+			verbose => $self->verbose(),
+			db_file_name => $self->db_file_name(),
+		);
+		$analysis->reset();
+		return $analysis;
 	},
+);
+
+has db_file_name => (
+	is        => 'ro',
+	isa       => 'Str',
+	required  => 1,
 );
 
 has verbose => ( is => 'ro', isa => 'Bool', default => 0 );
@@ -26,13 +37,13 @@ has verbose => ( is => 'ro', isa => 'Bool', default => 0 );
 sub on_node_add {
 	my ($self, $revision, $path, $kind, $data) = @_;
 	$self->log("ANL) r$revision add $kind $path");
-	$self->analysis()->consider_add($revision, $path, $kind);
+	$self->analysis()->consider_add($path, $revision, $kind);
 }
 
 sub on_node_change {
 	my ($self, $revision, $path, $kind, $data) = @_;
 	$self->log("ANL) r$revision edit $kind $path");
-	$self->analysis()->consider_change($revision, $path, $kind);
+	$self->analysis()->consider_change($path, $revision, $kind);
 }
 
 # According to the Red Bean Subersion book, "replacement" happens when
@@ -44,22 +55,22 @@ sub on_node_change {
 sub on_node_replace {
 	my ($self, $revision, $path, $kind, $data) = @_;
 	$self->log("ANL) r$revision replace $kind $path");
-	$self->analysis()->consider_delete($revision, $path);
-	$self->analysis()->consider_add($revision, $path, $kind);
+	$self->analysis()->consider_delete($path, $revision);
+	$self->analysis()->consider_add($path, $revision, $kind);
 }
 
 sub on_node_copy {
 	my ($self, $dst_rev, $dst_path, $kind, $src_rev, $src_path, $text) = @_;
 	$self->log("ANL) r$dst_rev copy $kind $dst_path from $src_path r$src_rev");
 	$self->analysis()->consider_copy(
-		$dst_rev, $dst_path, $kind, $src_rev, $src_path
+		$dst_path, $dst_rev, $kind, $src_path, $src_rev,
 	);
 }
 
 sub on_node_delete {
 	my ($self, $revision, $path) = @_;
 	$self->log("ANL) r$revision delete $path");
-	$self->analysis()->consider_delete($revision, $path);
+	$self->analysis()->consider_delete($path, $revision);
 }
 
 sub on_walk_done {
@@ -71,7 +82,7 @@ sub on_walk_begin {
 	my $self = shift;
 
 	# The repository needs a root directory.
-	$self->analysis()->consider_add(0, "", "dir");
+	$self->analysis()->consider_add("", 0, "dir");
 }
 
 sub log {

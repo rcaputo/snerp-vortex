@@ -161,9 +161,12 @@ after on_revision_done => sub {
 
 	$self->push_dir($self->replay_base());
 
-	my $copy_sources = $self->arborist()->get_copy_sources($revision_id);
-	COPY: while (my ($cps_path, $cps_obj) = each %$copy_sources) {
-		my $cps_kind = $cps_obj->kind();
+	COPY: foreach my $copy_source_obj (
+		$self->arborist()->get_copy_sources_for_revision($revision_id)
+	) {
+		my $cps_kind = $copy_source_obj->kind();
+		my $cps_path = $copy_source_obj->src_path();
+
 		$self->log("CPY) saving $cps_kind $cps_path for later.");
 
 		# Get the copy depot information, based on absolute path/rev tuples.

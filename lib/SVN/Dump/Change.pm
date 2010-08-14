@@ -1,29 +1,43 @@
 package SVN::Dump::Change;
 
 use Moose;
+use SVN::Analysis::Dir;
 
 has path      => ( is => 'ro', isa => 'Str', required => 1 );
 has operation => ( is => 'ro', isa => 'Str' );
 
 has analysis  => (
 	is      => 'rw',
-	isa     => 'SVN::Analysis::Change',
+	isa     => 'SVN::Analysis::Dir',
+	handles => {
+		# exposed method => Dir method
+		entity_type   => 'ent_type',
+		entity_name   => 'ent_name',
+		is_entity     => 'is_entity',
+		path_lop      => 'path_lop',
+		path_prepend  => 'path_prepend',
+	},
 );
 
-has entity  => (
-	is      => 'rw',
-	isa     => 'SVN::Analysis::Change',
-	handles => [qw(entity_type entity_name)],
+has 'rel_path' => (
+	is => 'ro',
+	isa => 'Str',
+	lazy => 1,
+	default => sub {
+		my $self = shift;
+
+		my $path = $self->path();
+
+		if (length(my $lop = $self->path_lop())) {
+			$path =~ s!^\Q$lop\E(?:/|$)!! || die "$path doesn't begin with $lop";
+		}
+
+		if (length(my $prepend = $self->path_prepend())) {
+			$path =~ s!^/*!$prepend/!;
+		}
+
+		return $path;
+	},
 );
-
-sub rel_path {
-	my $self = shift;
-	return $self->analysis()->fix_path($self->path());
-}
-
-sub is_entity {
-	my $self = shift;
-	return $self->path() eq $self->entity()->path();
-}
 
 1;

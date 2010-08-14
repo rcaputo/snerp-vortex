@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-# Given a snaalyze XML file, allow a user to page through a
+# Given a snaalyze sqlite database, allow a user to page through a
 # repository's significant revisions.  Display a Gtk2 TreeView of the
 # directory structure at each revision.
 #
@@ -8,7 +8,7 @@
 # branches and tags at each revision, so that Snerp Vortex can do the
 # right thing when replaying the repository into another system.
 #
-# TODO - Given sufficient motivation, the XML intermediate format
+# TODO - Given sufficient motivation, the intermediate sqlite database
 # could be made generic enough to represent repositories from version
 # control systems other than Subversion.  Snerp Vortex could become an
 # any-to-any tool, rather than a Subversion-to-any tool.
@@ -30,35 +30,34 @@ use SVN::Analysis;
 use Glib qw(TRUE FALSE);
 use Gtk2 '-init';
 
-my ($help, $xml_file_name);
+my ($help, $analysis_db);
 my $getopt_okay = GetOptions(
 	"help"        => \$help,
-	"analysis=s"  => \$xml_file_name,
+	"analysis=s"  => \$analysis_db,
 );
 
 if ($help or !$getopt_okay) {
 	die(
 		"$0 usage:\n",
-		"  --analysis=FILENAME  location of snanalyze XML output\n",
+		"  --analysis=FILENAME  location of snanalyze sqlite database\n",
 		"  --help               you're soaking in it.\n",
 	);
 }
 
 die "$0: --analysis=FILENAME required\n" unless (
-	defined $xml_file_name and length $xml_file_name
+	defined $analysis_db and length $analysis_db
 );
-die "$0: --analysis path ($xml_file_name) doesn't exist\n" unless (
-	-e $xml_file_name
+die "$0: --analysis path ($analysis_db) doesn't exist\n" unless (
+	-e $analysis_db
 );
-die "$0: --analysis path ($xml_file_name) must be a file\n" unless (
-	-f $xml_file_name
+die "$0: --analysis path ($analysis_db) must be a file\n" unless (
+	-f $analysis_db
 );
 
 ### Load the Subversion analysis.
 
-my $analysis = SVN::Analysis->new();
-warn time(), " loading xml...\n";
-$analysis->init_from_xml_file($xml_file_name);
+warn time(), " attaching to database...\n";
+my $analysis = SVN::Analysis->new(db_file_name => $analysis_db);
 warn time(), " analyzing...\n";
 $analysis->analyze();
 warn time(), " done.\n";
@@ -76,7 +75,7 @@ $window->add($v_box);
 
 ### Revisions and the revision labels.
 
-my @revisions = $analysis->significant_revisions();
+my @revisions = $analysis->get_significant_revisions();
 my ($revision_index, $current_revision);
 
 my $revision_box = Gtk2::VBox->new(FALSE, 0);
@@ -134,6 +133,15 @@ $prev_button->signal_connect(
 );
 
 $nav_box->pack_start($prev_button, FALSE, FALSE, 0);
+
+my $refresh_button = Gtk2::Button->new("=");
+$prev_button->signal_connect(
+	clicked => sub {
+		populate_tree($current_revision);
+	}
+);
+
+$nav_box->pack_start($refresh_button, FALSE, FALSE, 0);
 
 my $next_button = Gtk2::Button->new(">");
 $next_button->signal_connect(
@@ -282,39 +290,39 @@ sub _populate_tree_recursive {
 
 	my $iter = $tree_store->append($parent_iter);
 
-	my $node = $tree_node->{node};
 	$tree_store->set(
 		$iter,
-		0 => $tree_node->{name},
+		0 => $tree_node->name(),
 		1 => (
-			($revision == $node->revision)
+			($revision == $tree_node->revision())
 			? (
-				$node->is_copy()
+				$tree_node->is_copy()
 				? "copy"
 				: (
-					$node->is_add()
+					$tree_node->is_add()
 					? "add"
 					: "--"
 				)
 			)
 			: "--"
 		),
-		2 => $node->entity_type(),
-		3 => $node->entity_name(),
-		4 => $node->path_lop(),
-		5 => $node->path_prepend(),
-		6 => $node->relocated_path(),
+		2 => $tree_node->ent_type() || "",
+		3 => $tree_node->ent_name() || "",
+		4 => $tree_node->path_lop() || "",
+		5 => $tree_node->path_prepend() || "",
+		6 => $tree_node->rel_path() || "",
 	);
 
 	_populate_tree_recursive($revision, $iter, $_) foreach (
-		@{$tree_node->{children}}
+		map { $tree_node->children()->{$_} }
+		sort keys %{$tree_node->children()}
 	);
 }
 
 sub populate_tree {
 	my $revision = shift;
 
-	my $tree = $analysis->as_tree_then($revision);
+	my $tree = $analysis->get_tree($revision);
 
 	$tree_store->clear();
 	_populate_tree_recursive($revision, undef, $tree);

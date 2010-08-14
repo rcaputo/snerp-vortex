@@ -14,7 +14,7 @@ use Getopt::Long;
 my $replayer_class = "git";
 my (
 	$authors_file, $replay_base, $dump_file_name, $copy_depot_path,
-	$include_regexp, $analysis_file_name,
+	$include_regexp, $analysis_db_name,
 );
 my $verbose = 0;
 my $help = 0;
@@ -30,7 +30,7 @@ my $getopt_okay = GetOptions(
 	'help',         \$help,
 	'experimental', \$agree,
 	'include=s',    \$include_regexp,
-	'analysis=s',   \$analysis_file_name,
+	'analysis=s',   \$analysis_db_name,
 );
 
 if ($help or !$getopt_okay) {
@@ -49,7 +49,7 @@ if ($help or !$getopt_okay) {
 		"  --help               you're soaking in it.\n",
 		"  --experimental       enable experimental features at one's own risk\n",
 		"  --include=REGEXP     limit replay to paths matching REGEXP\n",
-		"  --analysis=FILENAME  path to snanalyze output XML file\n",
+		"  --analysis=FILENAME  path to snanalyze sqlite3 database\n",
 	);
 }
 
@@ -96,12 +96,12 @@ if (defined $authors_file) {
 	}
 }
 
-if (defined $analysis_file_name) {
-	unless (-e $analysis_file_name) {
-		die "$0: --analysis path ($analysis_file_name) must exist if used\n";
+if (defined $analysis_db_name) {
+	unless (-e $analysis_db_name) {
+		die "$0: --analysis path ($analysis_db_name) must exist if used\n";
 	}
-	unless (-f $analysis_file_name) {
-		die "$0: --analysis path ($analysis_file_name) must be a file\n";
+	unless (-f $analysis_db_name) {
+		die "$0: --analysis path ($analysis_db_name) must be a file\n";
 	}
 }
 
@@ -144,7 +144,7 @@ my $replayer = $replayer_class->new(
 	authors_file      => $authors_file,
 	verbose           => $verbose,
 	include_regexp    => $include_regexp,
-	analysis_filename => $analysis_file_name,
+	db_file_name      => $analysis_db_name,
 );
 
 $replayer->walk();
