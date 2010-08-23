@@ -21,16 +21,16 @@ my $help = 0;
 my $agree = 0;
 
 my $getopt_okay = GetOptions(
-	'replayer=s',   \$replayer_class,
-	'authors=s',    \$authors_file,
-	'into=s',       \$replay_base,
-	'dump=s',       \$dump_file_name,
-	'copies=s',     \$copy_depot_path,
-	'verbose',      \$verbose,
-	'help',         \$help,
-	'experimental', \$agree,
-	'include=s',    \$include_regexp,
 	'analysis=s',   \$analysis_db_name,
+	'authors=s',    \$authors_file,
+	'copies=s',     \$copy_depot_path,
+	'dump=s',       \$dump_file_name,
+	'experimental', \$agree,
+	'help',         \$help,
+	'include=s',    \$include_regexp,
+	'into=s',       \$replay_base,
+	'replayer=s',   \$replayer_class,
+	'verbose',      \$verbose,
 );
 
 if ($help or !$getopt_okay) {
@@ -148,3 +148,138 @@ my $replayer = $replayer_class->new(
 );
 
 $replayer->walk();
+exit;
+
+__END__
+
+=head1 NAME
+
+snerp - Export a Subversion repository to some other format
+
+=head1 SYNOPSIS
+
+	snerp \
+		--replayer      git                     \
+		--dump          ./project.svndump       \
+		--analysis      ./project-index.sqlite3 \
+		--into          ./project-git-dir       \
+		--authors       ./authors.txt           \
+		--copies        ./project-copies-dir    \
+		--experimental
+
+=head1 DESCRIPTION
+
+snerp walks through a Subversion dump, replaying each revision into
+some other system.
+
+For example, the "filesystem" replayer will track the state of the
+files in the repository after each revisions.  The filesystem copy of
+the repository should be essentially identical to a clean checkout,
+with some insignificant differences.
+
+The "git" replayer will replay each reivision into a new Git
+repository.  The resulting Git repository should be essentially
+identical to the source Subversion repository, with some insignificant
+differences.
+
+The snerp tool works on files produced by other Snerp Vortex tools.
+See L</USAGE> for details.
+
+=head1 USAGE
+
+=head2 --analysis DB_FILENAME
+
+The location of the SQLite database corresponding to the Subversion
+dump being replayed.  Snerp Vortex uses the database to recognize tags
+and branches in the source Subversion repository.  Required.
+
+=head2 --authors AUTHORS_FILENAME
+
+The location of an authors.txt file used to map Subversion authors to
+authors in the target version control system.  Modeled after git-svn's
+authors.txt file.  Optional but recommended for Git.
+
+See "git --help svn" for the file's format and purpose.
+
+See L<snauthors> for a tool to find all your Subversion authors.
+
+=head2 --copies TEMPORARY_COPIES_DIRECTORY
+
+A temporary directory where copied files are kept until needed.  Not
+all replayers can support copies that come from earlier revisions, so
+snerp caches the source files in the TEMPORARY_COPIES_DIRECTORY until
+it's time to actually copy them.
+
+This directory may become quite large, espeically in large projects
+that branch a lot.
+
+=head2 --dump SVN_DUMP_FILENAME
+
+The location of the Subversion dump to replay.  Required since nothing
+can be done without one.
+
+=head2 --experimental
+
+By using the --experimental flag, you acknowlede that Snerp Vortex is
+experimental software that you wish to use at your own risk.  Very
+much required.
+
+The snerp tool does potentially harmful things like deleting entire
+directories.  We hope it's safe, but the things Snerp Vortex does
+makes it a good candidate for abuse.  If it accidentally wipes out
+your machine, please file an actionable bug.  You are otherwise on
+your own.
+
+=head2 --include REGEXP
+
+A regular expression to limit the directories included in the replayed
+repository.  Experimental, and be aware that the option can break copy
+operations that cross the border between included and excluded
+directories.  It's probably better to convert the entire repository,
+then clean up the structure in the new VCS.  Optional and discouraged.
+
+=head2 --into NEW_BASE_DIRECTORY
+
+The base directory into which the new repository will be replayed.
+Required.
+
+=head2 --replayer REPLAYER_CLASS
+
+The type of repository to create.  By default only "filesystem" and
+"git" are allowed, but we hope people write plugins for their favorite
+version control systems.  Required.
+
+=head2 --verbose
+
+Enable more debugging output than your screen has room for.  Traces
+every move snerp makes.  Every step it takes.
+
+=head1 TODO
+
+Remove temporary copy sources from the --copies directory when they're
+not longer needed.
+
+=head1 SEE ALSO
+
+L<App::SnerpVortex> - Main documentation for Snerp Vortex.
+
+L<SVN::Dump> - Subversion dumps are parsed by SVN::Dump.
+
+snanalyze - Analyze a Subversion dump, and produce an index database
+for other tools to process.
+
+snassign-auto - Automatically assign tags and branches to a snanalyze
+index.
+
+snassign-gui - Graphical snanalyze index browser.  Future plans will
+allow users to assign branches and tags by hand.  Requires Gtk.
+
+snauthors - Extract a basic authors.txt file from a Subversion dump.
+
+=head1 AUTHORS AND LICENSE
+
+Snerp Vortex is Copyright 2010 by Rocco Caputo and contributors.
+
+It is released under the same terms as Perl itself.
+
+=cut

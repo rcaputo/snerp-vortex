@@ -7,13 +7,9 @@ package SVN::Dump::Arborist;
 
 use Moose;
 
-use SVN::Dump::Entity;
 use SVN::Dump::Revision;
-use SVN::Dump::Copy;
 use SVN::Analysis;
 use SVN::Dump::Analyzer;
-
-use YAML::Syck; # for debugging
 
 use Carp qw(croak);
 use Storable qw(dclone);
@@ -214,52 +210,6 @@ sub get_file_analysis_info {
 	my ($self, $revision, $path) = @_;
 	$path =~ s!/*[^/]+$!!;
 	return $self->analysis()->get_dir_info($path, $revision);
-}
-
-1;
-
-__END__
-
-###################
-### Helper methods.
-
-# Return the current entity at a path, or undef if none is there.
-# TODO - Determine need.
-# TODO - May be part of the old analysis code.
-# TODO - May need to be refactored into the new analysis class.
-
-sub get_entity {
-	my ($self, $revision, $path) = @_;
-	return $self->analysis()->get_entity_then($revision, $path);
-}
-
-
-#sub DEMOLISH {
-#	my $self = shift;
-#	use YAML::Syck; print YAML::Syck::Dump($self->path_to_entities());
-#	exit;
-#}
-
-sub log {
-	my $self = shift;
-	return unless $self->verbose();
-	print time() - $^T, " ", join("", @_), "\n";
-}
-
-
-sub get_analysis_then {
-	my ($self, $revision, $path) = @_;
-	return $self->analysis()->get_path_change_then($revision, $path);
-}
-
-sub get_entity_then {
-	my ($self, $revision, $path) = @_;
-	return $self->analysis()->get_entity_then($revision, $path);
-}
-
-sub map_entity_names {
-	my ($self, $entity_name_map) = @_;
-	$self->analysis()->map_entity_names($entity_name_map);
 }
 
 1;

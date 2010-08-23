@@ -58,3 +58,65 @@ my $analyzer = SVN::Dump::Analyzer->new(
 );
 
 $analyzer->walk();
+exit;
+
+__END__
+
+=head1 NAME
+
+snanalyze - analyze a Subversion dump and index important paths and revisions
+
+=head1 SYNOPSIS
+
+	snanalyze --dump project.svndump --db index.sqlite3 --verbose
+
+=head1 DESCRIPTION
+
+snanalyze combs through a Subversion dump for events that may define
+tags and branches.  It generates an index database with information
+aobut paths, revisions and copies that may be useful to other programs
+in the Snerp Vortex toolbox.
+
+Subversion dumps are create by svnadmin(1).  Really large dumps may be
+abbreviated usng the snub(1) tool, which is part of Snerp Vortex.
+
+=head1 USAGE
+
+=head2 --dump SVN_DUMP_FILENAME
+
+The location of the Subversion dump to analyze.  Required since
+nothing can be done without one.
+
+=head2 --db DB_FILENAME
+
+The location of the SQLite database to hold the index.  Required.
+
+=head2 --verbose
+
+Turn on excessive output for debugging.
+
+=head1 SEE ALSO
+
+L<App::SnerpVortex> - Main documentation for Snerp Vortex.
+
+L<SVN::Dump> - Subversion dumps are parsed by SVN::Dump.
+
+snassign-auto - Automatically assign tags and branches to a snanalyze
+index.
+
+snassign-gui - Graphical snanalyze index browser.  Future plans will
+allow users to assign branches and tags by hand.  Requires Gtk.
+
+snauthors - Extract a basic authors.txt file from a Subversion dump.
+
+snerp - Convert a Subversion repository to a flat filesystem or Git.
+Uses the snanalyze index, with help from the snassign tools, to
+intelligently branch and tag as it goes.
+
+=head1 AUTHORS AND LICENSE
+
+Snerp Vortex is Copyright 2010 by Rocco Caputo and contributors.
+
+It is released under the same terms as Perl itself.
+
+=cut

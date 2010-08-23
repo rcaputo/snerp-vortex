@@ -88,3 +88,64 @@ sub get_entity_hint {
 	# Catch-all.  Must go at the end.
 	return("branch", "master", "", "");
 }
+
+__END__
+
+=head1 NAME
+
+snassign-auto - Automatically assign tags and branches in a snanalyze index.
+
+=head1 SYNOPSIS
+
+	snassign-auto --analysis index.sqlite3
+
+=head1 DESCRIPTION
+
+snassign-auto converts paths in the snanalyze index database into tags
+and branches according to some simple rules:
+
+Anything in /trunk is considered to be in the "master" branch.
+
+Anything in /tag or /tags is considered to be a tag.  Tags that are
+subsequently altered will be treated as branches, however, since git
+doesn't permit edits within true tags.
+
+Anything in /branch or /branches is considered to be a branch.
+However, any branches that aren't modified will subsequently be
+converted to tags.
+
+The rules are encoded in get_entity_hint() within snassign-auto.  To
+define new rules, it's expected that you copy snassign-auto and modify
+get_entity_hint().
+
+=head1 USAGE
+
+=head2 --analysis DB_FILENAME
+
+The location of the SQLite database holding the index.  Required.
+
+=head1 SEE ALSO
+
+L<App::SnerpVortex> - Main documentation for Snerp Vortex.
+
+L<SVN::Dump> - Subversion dumps are parsed by SVN::Dump.
+
+snanalyze - Analyze a Subversion dump, and produce an index database
+for other tools to process.
+
+snassign-gui - Graphical snanalyze index browser.  Future plans will
+allow users to assign branches and tags by hand.  Requires Gtk.
+
+snauthors - Extract a basic authors.txt file from a Subversion dump.
+
+snerp - Convert a Subversion repository to a flat filesystem or Git.
+Uses the snanalyze index, with help from the snassign tools, to
+intelligently branch and tag as it goes.
+
+=head1 AUTHORS AND LICENSE
+
+Snerp Vortex is Copyright 2010 by Rocco Caputo and contributors.
+
+It is released under the same terms as Perl itself.
+
+=cut

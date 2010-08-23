@@ -337,3 +337,56 @@ $window->show_all();
 
 Gtk2->main();
 exit;
+
+__END__
+
+=head1 NAME
+
+snassign-gui - Graphical snanalyze index browser.
+
+=head1 SYNOPSIS
+
+	snassign-gui --analysis index.sqlite3
+
+=head1 DESCRIPTION
+
+snassign-gui is a Gtk-based graphical browser for Snerp Vortex index
+databases.  It presents the directory structure of the repository at
+each revision where tags and branches may be created.  Users may page
+through these key revisions to see how the repository evolves over
+time.
+
+A future revision may allow users to manually assign branch and tag
+status to directories.  This may depend upon contributions, however.
+
+=head1 USAGE
+
+=head2 --analysis DB_FILENAME
+
+The location of the SQLite database to hold the index.  Required.
+
+=head1 SEE ALSO
+
+L<App::SnerpVortex> - Main documentation for Snerp Vortex.
+
+L<SVN::Dump> - Subversion dumps are parsed by SVN::Dump.
+
+snanalyze - Analyze a Subversion dump, and produce an index database
+for other tools to process.
+
+snassign-auto - Automatically assign tags and branches to a snanalyze
+index.
+
+snauthors - Extract a basic authors.txt file from a Subversion dump.
+
+snerp - Convert a Subversion repository to a flat filesystem or Git.
+Uses the snanalyze index, with help from the snassign tools, to
+intelligently branch and tag as it goes.
+
+=head1 AUTHORS AND LICENSE
+
+Snerp Vortex is Copyright 2010 by Rocco Caputo and contributors.
+
+It is released under the same terms as Perl itself.
+
+=cut

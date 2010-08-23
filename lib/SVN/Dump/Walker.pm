@@ -228,3 +228,177 @@ sub walk {
 }
 
 1;
+
+__END__
+
+=head1 NAME
+
+SVN::Dump::Walker - A callback interface for SVN::Dump.
+
+=head1 SYNOPSIS
+
+Subclass SVN::Dump::Walker to perform some task.  Moose is optional.
+This is an abbreviated version of L<SVN::Dump::AuthorExtractor>:
+
+	package SVN::Dump::AuthorExtractor;
+	use Moose;
+	extends qw(SVN::Dump::Walker);
+
+	has authors => (
+		is      => 'rw',
+		isa     => 'HashRef[Str]',
+		default => sub { {} }
+	);
+
+	sub on_revision {
+		my ($self, $revision, $author, $date, $log_message) = @_;
+		$author = "(no author)" unless defined $author and length $author;
+		$self->authors()->{$author} = 1;
+	}
+
+	sub on_walk_done {
+		my $self = shift;
+		foreach my $author (sort keys %{$self->authors()}) {
+			print "$author = <$author\@" . $self->svn_dump()->uuid() . ">\n";
+		}
+	}
+
+	1;
+
+And the subclass is used.  This is an abbreviated version of
+L<snauthors>:
+
+	my $replayer = SVN::Dump::AuthorExtractor->new(
+		svn_dump_filename => "subversion.dump",
+	);
+
+	$replayer->walk();
+	exit;
+
+=head1 DESCRIPTION
+
+SVN::Dump::Walker walks a Subversion dump with SVN::Dump, calling back
+specific methods for each record.
+
+=head2 Construction
+
+SVN::Dump::Walker takes a few basic constructor parameters.
+
+C<svn_dump_filename> should contain the name of a Subversion dump
+file.  It's required.
+
+C<include_regexp> may contain a regular expression defining the
+directories and files to include in the walk.  Those that don't match
+won't trigger callbacks.  Optional.
+
+=head2 Public Methods
+
+=head3 walk
+
+Start the walker's SVN::Dump loop.  Callbacks will be produced until
+an error occurs or the file is completely traversed.
+
+=head2 Callback Methods
+
+=head3 on_walk_begin
+
+An initial callback when walk() has begun.
+
+Called with only one parameter, $self.
+
+=head3 on_walk_done
+
+A final callback when SVN::Dump is done and walk() is about to return.
+
+Called with only one parameter, $self.
+
+=head3 on_revision
+
+Called whenever a new Subversion revision begins.
+
+Called with five parameters: $self, the revision number, its author,
+the time the revision was committed ("svn:date" property), and the
+corresponding log message ("svn:log" property).
+
+=head3 on_revision_done
+
+Called whenever a Subversion revision has been committed.
+
+Called with two parameters: $self and the revision number.
+
+=head3 on_node_add
+
+Called whenever SVN::Dump encounters an "add" action that is not a
+copy.  For adds that are copies, see on_node_copy().
+
+Called with five parameters: $self, the revision number, the path of
+the thing being added, the kind of thing being added ("file" or
+"dir"), and optionally the contents of the thing being added.
+
+=head3 on_node_change
+
+Called whenever SVN::Dump encounters a "change" action that is not a
+copy.  For changes that are copies, see on_node_copy().
+
+Called with five parameters: $self, the revision number, the path of
+the thing being changed, the kind of thing being changed ("file" or
+"dir"), and optionally the contents of the thing being changed.
+
+=head3 on_node_replace
+
+Called whenever SVN::Dump encounters a "replace" action that is not a
+copy.  For replacements that are copies, see on_node_copy().
+
+Called with five parameters: $self, the revision number, the path of
+the thing being replaced, the kind of thing being replaced ("file" or
+"dir"), and optionally the contents of the thing being replaced.
+
+Subversion determines how "replace" differs from "change".
+
+=head3 on_node_delete
+
+Called whenever SVN::Dump encounters a "delete" action.
+
+Called with three parameters: $self, the revision number, and the path
+of the thing being deleted.
+
+=head3 on_node_copy
+
+Called whenever SVN::Dump encounters an action that results from a
+copy.  The original actions may be "add", "change" or "replace", but
+they're all considered copies if they have 'Node-copyfrom-path'
+information.
+
+Called with seven parameters: $self, the revision number, the
+destination path, the kind of thing being copied ("file" or "dir"),
+the copy source revision, the copy source path, and optionally the
+contents of the thing being copied.
+
+=head1 BUGS
+
+on_node_copy() loses some data---whether the copy is the result of an
+addition, a change, or a replacement.  This isn't significant for
+SVN::Dump::Walker's original purpose, but it could be for someone
+else's.  Please submit a bug if your use case requires the additional
+information.
+
+=head1 SEE ALSO
+
+L<SVN::Dump> - SVN::Dump::Walker uses SVN::Dump to parse Subversion
+dumps.
+
+L<App::SnerpVortex> - SVN::Dump::Walker is used extensively in Snerp
+Vortex.
+
+L<SVN::Dump::AuthorExtractor> and L<snauthors> are full versions of
+the SYNOPSIS examples.
+
+=head1 AUTHORS AND LICENSE
+
+Snerp Vortex is Copyright 2010 by Rocco Caputo and contributors.
+
+It is released under the same terms as Perl itself.
+
+=cut
+
+

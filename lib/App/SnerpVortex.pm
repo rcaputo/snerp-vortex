@@ -14,91 +14,131 @@ App::SnerpVortex - Replay a Subversion dump into Git/Filesystem/etc.
 
 Snerp Vortex is an anagram of SVN Exporter.  It aims to be a faster,
 more reliable way to create new repositories from Subversion dumps
-than using git-svn and various abandonment techniques.
+than using git-svn and/or various abandonment techniques.
 
 Faster?  On my canonical example repository (POE), Snerp Vortex
-converts 2824 Subversion commits to Git in about 250 seconds.
+converts 2824 Subversion commits to Git in under 300 seconds.
 
-Not fast enough?  I'm looking for someone with git-fast-import clue to
-help make it faster.  For comparison, the same repository can be
-converted into a flat filesystem in about 70 seconds.
+Not fast enough?  The conversion happens in about 100 seconds if we
+remove Git's porcelain from the equation.  So there's a lot of room
+for improvement, perhaps by switching to git-fast-import.  I'm looking
+for someone who wants to help port it over.
 
 More satisfying?  Snerp Vortex uses path analysis to detect hints
 about tags and branches.  It then adjusts its assumptions according to
 actual repository use.  Tags that are modified later become branches.
 Branches that are never touched are demoted to tags.
 
+Snerp Vortex gains some benefits by doing tag and branch analysis
+before converting the repository:
+
+=over 4
+
+=item *
+
+Tag and branch analyses can be examined by a human without converting
+the repository.  The L<snassign-gui> utility graphically browses the
+repository structure over time.
+
+=item *
+
+Analysis errors can be fixed and redone quickly without waiting for
+lengthy repository conversions each time.
+
+=item *
+
+Tagging and branching are performed as "git tag" and "git branch" at
+appropriate times.  It's faster and smaller than duplicating directory
+trees and converting them later.
+
+=back
+
 There is rudimentary support for multiple projects per repository, but
 it needs love.
 
 =head2 Toolset
 
-Snerp Vortex is a chain of three tools.
+Snerp Vortex is a chain of multiple tools.
 
-=over
+=over 4
 
 =item snanalyze
 
-snanalyze examines a Subversion dump and produces an XML file
-describing its structure.  Sample usage:
+L<snanalyze> examines a Subversion dump and produces a SQLite database
+that describes its structure over time.  snanalyze is intended to be
+run first, as most other utilities require the SQLite database to
+work.
 
-	./snanalyze --dump poe.svndump > poe.xml
+=item snassign-auto
+
+L<snassing-auto> attemtps to automaically assign tags and branches
+based on directory locations and usage patterns.  It's generally run
+after snanalyze and before snassign-gui.
 
 =item snassign-gui
 
-snassign-gui is a Gtk2 utility to browse an XML repository analysis.
+L<snassign-gui> is a Gtk2 utility to browse a repository analysis.
 With it, one can page back and forth through significant revisions to
-see how snanalyze interpreted structural changes.  It's intended to be
-an analysis editor with which a human may assign roles to different
-directories at particular revisions.  Some repositories are just
-hopeless without a human's touch.  Sample usage:
+see how snassign-auto interpreted structural changes.
 
-	./snassign-gui --analysis poe.xml
+Some repositories will be too complex for snassign-auto to be
+successful.  We hope a motivated individual will update snassign-gui
+to be a tag/branch assignment editor so humans can override the
+automatic assignment.
+
+snassign-gui is intended to be used to verify that snassign-auto
+worked correctly, before a possibly lengthy snerp run.
 
 =item snerp
 
-Finally there's snerp itself.  Given a Subversion dump and an XML
-analysis, it will attempt to replay the repository into a new format.
-Sample usage:
-
-	./snerp \
-		--replayer git \
-		--authors $HOME/projects/.authors \
-		--dump $HOME/projects/poe.dump \
-		--analysis $HOME/projects/poe.xml \
-		--tmp $HOME/projects/snerp-tmp \
-		--into $HOME/projects/new-git-repot
-
-All three tools respond to --help.
+When everything is ready, snerp is called to export the Subversion
+dump.  It takes as input the Subversion dump, and the index database
+containing final tag and branch assignments.  It produces a new copy
+of the repository in the desired format.
 
 =back
 
-Snerp Vortex requires a Subversion dump file, which is generally
-created by running svnadmin dump on the machine that hosts the
-repository.  I've just come across a remote svn dump utility that may
-help when you don't have direct access to the svn host:
+=head2 Getting Subversion Dumps
 
-http://rsvndump.sourceforge.net/
+Snerp Vortex requires a Subversion dump file, which is generally
+created by running svnadmin dump on a local repository.
+
+There's also a remote svn dump utility that may help, but we haven't
+tried it: http://rsvndump.sourceforge.net/
+
+=head2 Other Included Utilities
 
 Snerp Vortex comes with some utilities and scripts that will
 eventually be cleaned up and organized.  Until then:
 
-	mkramdisk_osx - Create a 1 GB RAM disk with a case-sensitive
-	filesystem.
+=over 4
 
-	snub - Snub the file contents of a dump.  Retains the file and
-	directory structure, but the resulting dump and replays are much
-	smaller.  Written for Ævar Arnfjörð Bjarmason's six-gigabyte dump,
-	which triggers a hard to reproduce bug.
+=item mkramdisk_osx
 
-	diff-test - Diffs a svn and git checkout of the same repository at
-	the same revision.
+Create a 1 GB RAM disk with a case-sensitive filesystem.  Extremely
+useful for Macintosh machines that use case-insensitive filesystems by
+default.
 
-	dev-* and test-* - One-off test scripts.
+=item snub
 
-Snerp Vortex is late alpha quality.  It seems to work in limited
-tests, but there's no guarantee it will work for you.  Fixes are
-greatly appreciated.
+Snub the file contents of a dump.  Retains the file and directory
+structure, but the resulting dump and replays are much smaller.
+Written for Ævar Arnfjörð Bjarmason's six-gigabyte dump, which
+triggers a hard to reproduce bug.
+
+=item diff-test
+
+Performs a recursive diff, excluding some things that Subversion may
+have that another VCS may not.  For example, expanded "$Id$" tags.
+Useful for testing the results of a replay, although it won't test
+intermediate revisions... only the final ones.
+
+=back
+
+=head2 Development Scripts
+
+Other development and/or test scripts are included in the distribution
+but are neither installed nor documented here.  Browse around!
 
 =head1 OSX Users
 
@@ -188,5 +228,36 @@ Subversion can tag subdirectories within trunk.  After all, tags are
 just directory copies.  Git cannot.  Subversion tags are translated to
 Git by tagging HEAD at the relative moment when the Subversion tree
 has been tagged.  Is there a better way to do this?
+
+=head1 BUGS
+
+Snerp Vortex is early beta quality.  It seems to work in limited
+tests, but there's no guarantee it will work for you.  Fixes are
+greatly appreciated.
+
+=head1 SEE ALSO
+
+L<SVN::Dump> - Subversion dumps are parsed by SVN::Dump.
+
+snanalyze - Analyze a Subversion dump, and produce an index database
+for other tools to process.
+
+snassign-auto - Automatically assign tags and branches to a snanalyze
+index.
+
+snassign-gui - Graphical snanalyze index browser.  Future plans will
+allow users to assign branches and tags by hand.  Requires Gtk.
+
+snauthors - Extract a basic authors.txt file from a Subversion dump.
+
+snerp - Convert a Subversion repository to a flat filesystem or Git.
+Uses the snanalyze index, with help from the snassign tools, to
+intelligently branch and tag as it goes.
+
+=head1 AUTHORS AND LICENSE
+
+Snerp Vortex is Copyright 2010 by Rocco Caputo and contributors.
+
+It is released under the same terms as Perl itself.
 
 =cut
