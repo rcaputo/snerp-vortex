@@ -212,4 +212,9 @@ sub get_file_analysis_info {
 	return $self->analysis()->get_dir_info($path, $revision);
 }
 
+sub map_revisions {
+	my ($self, $svn_revision, $other_revision) = @_;
+	return $self->analysis()->map_revisions($svn_revision, $other_revision);
+}
+
 1;

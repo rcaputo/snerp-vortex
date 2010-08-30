@@ -1,0 +1,280 @@
+#!/usr/bin/env perl
+
+use warnings;
+use strict;
+use lib qw(./lib);
+
+use YAML;
+use SVN::Analysis;
+
+use Git::Repository;
+use Getopt::Long;
+
+my ($map_file_name, $db_file_name, $git_base, $new_base, $help_me, $verbose);
+my $getopt_okay = GetOptions(
+	'map=s',    \$map_file_name,
+	'db=s',     \$db_file_name,
+	'from=s',   \$git_base,
+	'into=s',   \$new_base,
+	'help',     \$help_me,
+	'verbose',  \$verbose,
+);
+
+if ($help_me or !$getopt_okay) {
+	die(
+		"$0 usage:\n",
+		"  --map=FILENAME           location of project map file\n",
+		"  --db=FILENAME            location of snanalyze sqlite3 database\n",
+		"  --from=GIT_BASE_DIR      location of monolithic git checkout\n",
+		"  --into=NEW_PARENT_DIR    directory to be created for projects\n",
+		"  --verbose                explain what's going on\n",
+		"  --help                   you're soaking in it.\n",
+	);
+}
+
+die "$0: Destination directory $new_base shouldn't pre-exist.\n" if (
+	-e $new_base
+);
+
+die "$0: Source git directory $git_base must pre-exist.\n" unless (
+	-e $git_base
+);
+
+my $analysis = SVN::Analysis->new(
+	db_file_name  => $db_file_name,
+	verbose       => $verbose,
+);
+
+# Acquire the projects.
+my $projects = YAML::LoadFile($map_file_name);
+
+unless (scalar keys %$projects) {
+	print "No projects in $map_file_name.  I guess we're done.\n";
+}
+
+# Set up the target projects.
+
+mkdir $new_base or die "mkdir $new_base failed: $!";
+
+foreach (sort keys %$projects) {
+	my $clone_path = "$new_base/$_";
+
+	$verbose and print "Cloning $git_base into $clone_path.\n";
+
+	my $project = $projects->{$_};
+
+	$project->{git} = Git::Repository->create(
+		clone => "file:///$git_base" => $clone_path
+	);
+
+	# Declare independence.
+	$project->{git}->run('remote', 'rm', 'origin');
+}
+
+# Find the last outside contributions to each project.
+# O(N^2) unfortunately.
+
+my (%copy_from, %copy_into);
+
+my @project_names = sort keys %$projects;
+foreach my $src_name (@project_names) {
+	foreach my $dst_name (@project_names) {
+		next if $src_name eq $dst_name;
+
+		my $copy = $analysis->get_last_copy_into_tree(
+			$projects->{$src_name}{svndir},
+			$projects->{$dst_name}{svndir},
+		);
+
+		# There was no copy
+		next unless $copy;
+
+		$copy_from{$src_name}{$dst_name} = $copy_into{$dst_name}{$src_name} = $copy;
+	}
+}
+
+# Repositories that don't exist in %copy_into are stand-alone.
+# They have no outside contributions.
+# Everything else can be removed from their repositories.
+
+foreach my $this_name (@project_names) {
+	next if exists $copy_into{$this_name};
+
+	$verbose and print "Isolating stand-alone project $this_name...\n";
+
+	my $this_project = $projects->{$this_name};
+	$this_project->{git}->run(
+		'filter-branch',
+		'-f',
+		'--subdirectory-filter', $this_project->{gitdir},
+		'--tag-name-filter', 'cat',
+		'--prune-empty',
+		'--',
+		'--all',
+	);
+}
+
+# Repositories that do have contributions are a bit more complex.
+# Contributing projects may be removed after the last contribution.
+# Projects that don't contribute may be removed entirely.
+
+foreach my $this_name (@project_names) {
+	next unless exists $copy_into{$this_name};
+	my $inbound = $copy_into{$this_name};
+
+	my $this_project = $projects->{$this_name};
+
+	foreach my $other_name (@project_names) {
+		next if $this_name eq $other_name;
+
+		my $other_project = $projects->{$other_name};
+
+		my $prune_range;
+		if (exists $inbound->{$other_name}) {
+			$prune_range = $analysis->get_other_rev_from_svn(
+				$inbound->{$other_name}->dst_rev()
+			) . '..';
+
+			$verbose and print(
+				"Truncating $other_name ($prune_range) from $this_name...\n"
+			);
+		}
+		else {
+			$verbose and print "Removing $other_name entirely from $this_name...\n";
+			$prune_range = 'master';
+		}
+
+		$this_project->{git}->run(
+			'filter-branch',
+			'-f',
+			'--index-filter',
+			"git rm -r --cached --ignore-unmatch $other_project->{gitdir}",
+			$prune_range
+		);
+	}
+}
+
+__END__
+
+=head1 NAME
+
+snerp-projector - break a Git repository into projects
+
+=head1 SYNOPSIS
+
+	snerp-projector \
+		--map paths-to-projects.txt \
+		--db snanalyze-index.sqlite3 \
+		--from monolithic-git-working-dir \
+		--into new-parent-dir
+
+=head1 DESCRIPTION
+
+snerp-projector identifies and breaks up a monolithic Git repository
+into separate, smaller repositories for each subproject.
+
+The original monolithic git repository (--from) is cloned for each
+anticipated subrpoject (listed in --map).  The subproject clones are
+placed into a new parent directory (--into).
+
+Subprojects are described in a YAML file, which contains a hash of
+hashes:
+
+	project:
+		gitdir: project/dir
+		svndir: trunk/project/dir
+
+For example:
+
+	poe-loop-gtk:
+		gitdir: polo-gtk
+		svndir: trunk/polo-gtk
+
+Needing both gitdir and svndir isn't ideal, but there hasn't been a
+better idea yet.
+
+=head2 Repository Requirements
+
+snerp-projector makes some assumptions about the repository.  These
+may change in the future, faster if someone can contribute patches.
+
+=over
+
+=item * Each subproject lives entirely under a single directory.
+
+=item * The complete history for each subproject is worth preserving.
+
+=back
+
+=head2 Subproject Types
+
+Subprojects vary in structure.  Each structure has its own
+requirements, which are outlined here.
+
+=head3 Notes Applicable to All Project Types
+
+In all cases, the original repository is cloned once for each
+subproject listed in the --map file.
+
+The extraction of each subproject will modify most or all of the
+cloned repositories.  Unrelated commits will be removed from each
+subproject's repository.  As much of the subproject as possible will
+be removed from all other repositories.
+
+=head3 Isolated Projects
+
+Some projects are created as new directories and contain all new
+files.  No other project contributes to them.  No files are copied in
+from elsewhere in the repository.
+
+These projects are easiest to split into their own repositories:
+
+	git filter-branch \
+		-f \
+		--subdirectory-filter project/path \
+		--tag-name-filter cat \
+		--prune-empty \
+		-- \
+		--all
+
+=head3 Spin-Off Projects
+
+Spin-off projects include files copied or moved in from other
+projects.  These pre-project files and commits contribute to the
+spin-off and its history, so they must be preserved.  However, they
+may be discarded after the final contribution to the spin-off project.
+
+Projects that don't contribute to spin-offs are removed entirely:
+
+	git filter-branch \
+		--index-filter 'git rm -r --cached --ignore-unmatch source/path' \
+		master
+
+Projects that do contribute are discontinued after the final
+contribution.  Everything afterwards is removed.  For example, if
+poe's last contribution to poe-extras was change df174613:
+
+	git filter-branch \
+		--index-filter 'git rm -r --cached --ignore-unmatch extras' \
+		df174613..
+
+That's a literal "..".
+
+=head1 SEE ALSO
+
+L<App::SnerpVortex> - Main documentation for Snerp Vortex.
+
+snanalyze - Analyze a Subversion dump, and produce an index database
+for other tools to process.
+
+snerp - Convert a Subversion repository to a flat filesystem or Git.
+Uses the snanalyze index, with help from the snassign tools, to
+intelligently branch and tag as it goes.
+
+=head1 AUTHORS AND LICENSE
+
+Snerp Vortex is Copyright 2010 by Rocco Caputo and contributors.
+
+It is released under the same terms as Perl itself.
+
+=cut

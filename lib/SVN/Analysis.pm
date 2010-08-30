@@ -1,7 +1,7 @@
 package SVN::Analysis;
 
 use Moose;
-use Carp qw(confess);
+use Carp qw(confess croak);
 
 use DBI;
 use SVN::Analysis::Dir;
@@ -104,6 +104,22 @@ sub reset {
 
 	$self->dbh()->do("
 		CREATE INDEX copy_srev ON copy (src_rev)
+	") or die $self->dbh()->errstr();
+
+	$self->dbh()->do("
+		CREATE TABLE rev_map (
+			seq       INTEGER PRIMARY KEY AUTOINCREMENT,
+			svn_rev   INT,
+			other_rev TEXT
+		)
+	") or die $self->dbh()->errstr();
+
+	$self->dbh()->do("
+		CREATE INDEX rev_map_svn ON rev_map (svn_rev, other_rev)
+	") or die $self->dbh()->errstr();
+
+	$self->dbh()->do("
+		CREATE INDEX rev_map_other ON rev_map (other_rev, svn_rev)
 	") or die $self->dbh()->errstr();
 }
 
@@ -673,6 +689,63 @@ sub get_all_copies_for_src {
 	return @copies;
 }
 
+sub get_last_copy_into_tree {
+	my ($self, $src_tree_path, $dst_tree_path) = @_;
+
+	my $sth = $self->dbh()->prepare_cached("
+		SELECT *
+		FROM copy
+		WHERE
+			(src_path = ? OR src_path LIKE ?) AND
+			(dst_path = ? OR dst_path LIKE ?)
+		ORDER BY src_rev DESC
+		LIMIT 1
+	") or die $self->dbh()->errstr();
+
+	my $src_like = "$src_tree_path/%";
+	my $dst_like = "$dst_tree_path/%";
+
+	$sth->execute(
+		$src_tree_path, $src_like,
+		$dst_tree_path, $dst_like,
+	) or die $sth->errstr();
+
+	my @copies;
+	while (my $copy_row = $sth->fetchrow_hashref()) {
+		push @copies, SVN::Analysis::Copy->new($copy_row);
+	}
+
+	return $copies[0];
+}
+
+#sub get_last_copy_out_of_tree {
+#	my ($self, $tree_path) = @_;
+#
+#	my $sth = $self->dbh()->prepare_cached("
+#		SELECT *
+#		FROM copy
+#		WHERE
+#			(src_path = ? OR src_path LIKE ?) AND NOT
+#			(dst_path = ? OR dst_path LIKE ?)
+#		ORDER BY src_rev DESC
+#		LIMIT 1
+#	") or die $self->dbh()->errstr();
+#
+#	my $tree_like_path = "$tree_path/%";
+#
+#	$sth->execute(
+#		$tree_path, $tree_like_path,
+#		$tree_path, $tree_like_path,
+#	) or die $sth->errstr();
+#
+#	my @copies;
+#	while (my $copy_row = $sth->fetchrow_hashref()) {
+#		push @copies, SVN::Analysis::Copy->new($copy_row);
+#	}
+#
+#	return $copies[0];
+#}
+
 # Return the SVN::Analysis::Dir object that encapsulates a
 # path,revision tuple.  Returns nothing on failure.
 
@@ -824,6 +897,41 @@ sub _get_tree_paths {
 	}
 
 	return @found_paths;
+}
+
+sub map_revisions {
+	my ($self, $svn_revision, $other_revision) = @_;
+
+	my $sth = $self->dbh()->prepare_cached("
+		INSERT INTO rev_map (svn_rev, other_rev)
+		VALUES (?, ?)
+	") or die $self->dbh()->errstr();
+
+	$sth->execute($svn_revision, $other_revision) or die $sth->errstr();
+}
+
+sub get_other_rev_from_svn {
+	my ($self, $svn_revision) = @_;
+
+	my $sth = $self->dbh()->prepare_cached("
+		SELECT other_rev
+		FROM rev_map
+		WHERE svn_rev = ?
+		ORDER BY svn_rev
+	") or die $self->dbh()->errstr();
+
+	$sth->execute($svn_revision) or die $sth->errstr();
+
+	$sth->bind_columns(\my $other_revision) or die $sth->errstr();
+
+	my @other_revisions;
+	while ($sth->fetch()) {
+		push @other_revisions, $other_revision;
+	}
+
+	return @other_revisions if wantarray;
+	croak "too many revisions for scalar context" if @other_revisions > 1;
+	return $other_revisions[0];
 }
 
 1;
