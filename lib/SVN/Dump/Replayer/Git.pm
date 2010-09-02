@@ -665,7 +665,7 @@ sub git_commit {
 	unlink $git_commit_message_file;
 
 	# Map between Subversion revisions and Git commits.
-	chomp(my $git_id = qx(git rev-list -n 1 HEAD);
+	chomp(my $git_id = qx(git rev-list -n 1 HEAD));
 	$self->arborist()->map_revisions($revision->id(), $git_id);
 
 	$self->needs_commit(0);
