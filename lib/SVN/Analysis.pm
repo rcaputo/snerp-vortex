@@ -128,7 +128,7 @@ sub reset {
 sub consider_add {
 	my ($self, $path, $revision, $kind) = @_;
 
-	warn "add: $path $revision" if $self->verbose();
+	warn "add: $path $revision\n" if $self->verbose();
 
 	# Touch the parent directory of the thing being added.
 	$self->_touch_parent_directory($path, $revision);
@@ -153,7 +153,7 @@ sub consider_add {
 		)
 	") or die $self->dbh()->errstr();
 
-	warn "INSERT $path r$revision" if $self->verbose();
+	warn "INSERT $path r$revision\n" if $self->verbose();
 	$sth->execute($path, $revision, $revision, "add", "add", 1, 1, 0, 0) or die (
 		$sth->errstr()
 	);
@@ -190,7 +190,7 @@ sub consider_copy {
 	# If this is a file, we're done.
 	return if $kind ne "dir";
 
-	warn "copy: $src_path $src_rev > $dst_path $dst_rev" if (
+	warn "copy: $src_path $src_rev > $dst_path $dst_rev\n" if (
 		$self->verbose()
 	);
 
@@ -201,7 +201,7 @@ sub consider_copy {
 			"can't relocate $path_to_copy from $src_path to $dst_path"
 		);
 
-		warn "copy includes: $path_to_copy > $relocated_path" if $self->verbose();
+		warn "copy includes: $path_to_copy > $relocated_path\n" if $self->verbose();
 
 		my $sth = $self->dbh()->prepare_cached("
 			INSERT INTO dir (
@@ -246,7 +246,7 @@ sub consider_delete {
 			$self->_path_exists($path_to_delete, $revision)
 		);
 
-		warn "UPDATE $path $revision (is_active=0)" if $self->verbose();
+		warn "UPDATE $path $revision (is_active=0)\n" if $self->verbose();
 
 		my $sth = $self->dbh()->prepare_cached("
 			UPDATE dir SET rev_last = ?, op_last = ?, is_active = ?
@@ -448,7 +448,7 @@ sub fix_copy_targets {
 		);
 
 		# Failure if destination isn't an entity.
-		die(
+		confess(
 			"illegal copy from ",
 			$src_info->ent_type(), " ", $src_info->ent_name(),
 			" to non-entity ", $dst_info->path()
@@ -456,6 +456,11 @@ sub fix_copy_targets {
 
 		# We're good if the entities match.
 		next if $src_info->ent_type() eq $dst_info->ent_type();
+
+		# TODO - I think the following rule is wrong.  If the entity types
+		# don't match, it means one's a tag and the other is a branch.
+		# Going from branch to tag is legal.  Going from tag to branch may
+		# also be legal.
 
 		# Otherwise the destination entity type must be modified to match
 		# the source type.
@@ -792,7 +797,7 @@ sub _touch_directory {
 
 	foreach my $dir_path ($self->_get_container_paths($path, $revision)) {
 
-		warn "touchdir: $dir_path $revision" if $self->verbose();
+		warn "touchdir: $dir_path $revision\n" if $self->verbose();
 
 		my $sth_query = $self->dbh()->prepare_cached("
 			SELECT op_last, rev_first
@@ -815,7 +820,7 @@ sub _touch_directory {
 			"more than one active row for $path r$revision"
 		);
 
-		warn "UPDATE $dir_path $rev_first -> $revision" if $self->verbose();
+		warn "UPDATE $dir_path $rev_first -> $revision\n" if $self->verbose();
 
 		my $sth_update = $self->dbh()->prepare_cached("
 			UPDATE dir
@@ -892,7 +897,7 @@ sub _get_tree_paths {
 
 	my @found_paths;
 	while ($sth->fetch()) {
-		warn "... $path = $found_path ($found_rev)" if $self->verbose();
+		warn "... $path = $found_path ($found_rev)\n" if $self->verbose();
 		push @found_paths, $found_path;
 	}
 
