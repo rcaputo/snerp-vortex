@@ -10,6 +10,9 @@ use SVN::Analysis;
 use Git::Repository;
 use Getopt::Long;
 
+use Log::Any::Adapter;
+use POSIX qw(strftime);
+
 my $last_log_time = $^T;
 
 my ($map_file_name, $db_file_name, $git_base, $new_base, $help_me, $verbose);
@@ -40,6 +43,16 @@ die "$0: Destination directory $new_base shouldn't pre-exist.\n" if (
 
 die "$0: Source git directory $git_base must pre-exist.\n" unless (
 	-e $git_base
+);
+
+Log::Any::Adapter->set(
+	'ScreenColoredLevel',
+	min_level => ($verbose ? 'trace' : 'warning'),
+	formatter => sub {
+		my ($file, $line) = (caller(1))[1,2];
+		$file =~ s!.*/!!;
+		strftime('%F %T', localtime()) . " - $file:$line - $_[1]";
+	},
 );
 
 my $analysis = SVN::Analysis->new(

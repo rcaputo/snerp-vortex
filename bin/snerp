@@ -11,6 +11,9 @@ STDOUT->autoflush(1);
 
 use Getopt::Long;
 
+use Log::Any::Adapter;
+use POSIX qw(strftime);
+
 my $replayer_class = "git";
 my (
 	$authors_file, $replay_base, $dump_file_name, $copy_depot_path,
@@ -125,6 +128,16 @@ $copy_depot_path = "$replay_base.copies" unless (
 if (-e $copy_depot_path) {
 	die "$0: --copies path ($copy_depot_path) must not exist\n";
 }
+
+Log::Any::Adapter->set(
+	'ScreenColoredLevel',
+	min_level => ($verbose ? 'trace' : 'warning'),
+	formatter => sub {
+		my ($file, $line) = (caller(1))[1,2];
+		$file =~ s!.*/!!;
+		strftime('%F %T', localtime()) . " - $file:$line - $_[1]";
+	},
+);
 
 # Convert the replayer class into a Perl class, and load it.
 $replayer_class = "SVN::Dump::Replayer::" .  ucfirst(lc($replayer_class));

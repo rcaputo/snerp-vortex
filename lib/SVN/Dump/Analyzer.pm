@@ -8,6 +8,8 @@ use SVN::Analysis;
 use Carp qw(croak);
 use Storable qw(dclone);
 
+use Log::Any qw($log);
+
 has analysis => (
 	is      => 'rw',
 	isa     => 'SVN::Analysis',
@@ -36,13 +38,13 @@ has verbose => ( is => 'ro', isa => 'Bool', default => 0 );
 
 sub on_node_add {
 	my ($self, $revision, $path, $kind, $data) = @_;
-	$self->log("ANL) r$revision add $kind $path");
+	$log->trace("r$revision add $kind $path");
 	$self->analysis()->consider_add($path, $revision, $kind);
 }
 
 sub on_node_change {
 	my ($self, $revision, $path, $kind, $data) = @_;
-	$self->log("ANL) r$revision edit $kind $path");
+	$log->trace("ANL) r$revision edit $kind $path");
 	$self->analysis()->consider_change($path, $revision, $kind);
 }
 
@@ -54,14 +56,14 @@ sub on_node_change {
 # and addition in the same revision is confusing.
 sub on_node_replace {
 	my ($self, $revision, $path, $kind, $data) = @_;
-	$self->log("ANL) r$revision replace $kind $path");
+	$log->trace("ANL) r$revision replace $kind $path");
 	$self->analysis()->consider_delete($path, $revision);
 	$self->analysis()->consider_add($path, $revision, $kind);
 }
 
 sub on_node_copy {
 	my ($self, $dst_rev, $dst_path, $kind, $src_rev, $src_path, $text) = @_;
-	$self->log("ANL) r$dst_rev copy $kind $dst_path from $src_path r$src_rev");
+	$log->trace("ANL) r$dst_rev copy $kind $dst_path from $src_path r$src_rev");
 	$self->analysis()->consider_copy(
 		$dst_path, $dst_rev, $kind, $src_path, $src_rev,
 	);
@@ -69,7 +71,7 @@ sub on_node_copy {
 
 sub on_node_delete {
 	my ($self, $revision, $path) = @_;
-	$self->log("ANL) r$revision delete $path");
+	$log->trace("ANL) r$revision delete $path");
 	$self->analysis()->consider_delete($path, $revision);
 }
 
@@ -83,12 +85,6 @@ sub on_walk_begin {
 
 	# The repository needs a root directory.
 	$self->analysis()->consider_add("", 0, "dir");
-}
-
-sub log {
-	my $self = shift;
-	return unless $self->verbose();
-	warn time() - $^T, " ", join("", @_), "\n";
 }
 
 1;

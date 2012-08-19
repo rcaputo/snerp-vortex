@@ -10,10 +10,16 @@ use lib qw(./lib);
 use Getopt::Long;
 use SVN::Analysis;
 
-my ($help, $analysis_db);
+use Log::Any::Adapter;
+use POSIX qw(strftime);
+use Log::Any qw($log);
+
+my ($help, $analysis_db, $verbose);
+
 my $getopt_okay = GetOptions(
 	"help"        => \$help,
 	"analysis=s"  => \$analysis_db,
+	"verbose"     => \$verbose,
 );
 
 if ($help or !$getopt_okay) {
@@ -34,21 +40,31 @@ die "$0: --analysis path ($analysis_db) must be a file\n" unless (
 	-f $analysis_db
 );
 
+Log::Any::Adapter->set(
+	'ScreenColoredLevel',
+	min_level => ($verbose ? 'trace' : 'warning'),
+	formatter => sub {
+		my ($file, $line) = (caller(1))[1,2];
+		$file =~ s!.*/!!;
+		strftime('%F %T', localtime()) . " - $file:$line - $_[1]";
+	},
+);
+
 ### Load the Subversion analysis.
 
-warn time(), " attaching to database...\n";
+$log->trace("Attaching to database.");
 my $analysis = SVN::Analysis->new(db_file_name => $analysis_db);
 
-warn time(), " analyzing...\n";
+$log->trace("Analyzing.");
 $analysis->analyze();
 
-warn time(), " finding tags, etc...\n";
+$log->trace("Finding tags, etc.");
 $analysis->auto_tag(\&get_entity_hint);
 
-warn time(), " fixing copy targets...\n";
+$log->trace("Fixing copy targets.");
 $analysis->fix_copy_targets();
 
-warn time(), " done.\n";
+$log->trace("Done.");
 exit;
 
 sub get_entity_hint {

@@ -6,6 +6,7 @@ use Carp qw(confess croak);
 use DBI;
 use SVN::Analysis::Dir;
 use SVN::Analysis::Copy;
+use Log::Any qw($log);
 
 has db_file_name => (
 	is        => 'ro',
@@ -128,7 +129,7 @@ sub reset {
 sub consider_add {
 	my ($self, $path, $revision, $kind) = @_;
 
-	warn "add: $path $revision\n" if $self->verbose();
+	$log->trace("add: $path $revision");
 
 	# Touch the parent directory of the thing being added.
 	$self->_touch_parent_directory($path, $revision);
@@ -153,7 +154,7 @@ sub consider_add {
 		)
 	") or die $self->dbh()->errstr();
 
-	warn "INSERT $path r$revision\n" if $self->verbose();
+	$log->trace("INSERT $path r$revision");
 	$sth->execute($path, $revision, $revision, "add", "add", 1, 1, 0, 0) or die (
 		$sth->errstr()
 	);
@@ -190,9 +191,7 @@ sub consider_copy {
 	# If this is a file, we're done.
 	return if $kind ne "dir";
 
-	warn "copy: $src_path $src_rev > $dst_path $dst_rev\n" if (
-		$self->verbose()
-	);
+	$log->trace("copy: $src_path $src_rev > $dst_path $dst_rev");
 
 	# Copy the source path and all the entire tree below.
 	foreach my $path_to_copy ($self->_get_tree_paths($src_path, $src_rev)) {
@@ -201,7 +200,7 @@ sub consider_copy {
 			"can't relocate $path_to_copy from $src_path to $dst_path"
 		);
 
-		warn "copy includes: $path_to_copy > $relocated_path\n" if $self->verbose();
+		$log->trace("copy includes: $path_to_copy > $relocated_path");
 
 		my $sth = $self->dbh()->prepare_cached("
 			INSERT INTO dir (
@@ -246,7 +245,7 @@ sub consider_delete {
 			$self->_path_exists($path_to_delete, $revision)
 		);
 
-		warn "UPDATE $path $revision (is_active=0)\n" if $self->verbose();
+		$log->trace("UPDATE $path $revision (is_active=0)");
 
 		my $sth = $self->dbh()->prepare_cached("
 			UPDATE dir SET rev_last = ?, op_last = ?, is_active = ?
@@ -281,9 +280,13 @@ sub analyze {
 	my $failures = 0;
 	while ($sth->fetch()) {
 		$failures++;
-		warn "path $path has $count is_active rows";
+		$log->warn("path $path has $count is_active rows");
 	}
-	die "only 1 is_active row allowed for any path" if $failures;
+
+	if ($failures) {
+		$log->fatal("only 1 is_active row allowed for any path");
+		die;
+	}
 
 	# Normalize active directory final revisions.
 
@@ -382,9 +385,15 @@ sub auto_tag {
 		my $failures = 0;
 		while ($sth_find_sub_roots->fetch()) {
 			$failures++;
-			warn "failure: entity at $ent_path contains sub-entity at $broken_path";
+			$log->warn(
+				"failure: entity at $ent_path contains sub-entity at $broken_path"
+			);
 		}
-		die "sub-entities indicate bad entity recognition" if $failures;
+
+		if ($failures) {
+			$log->fatal("sub-entities indicate bad entity recognition");
+			die;
+		}
 
 		# Second, ensure that the lop and prepend paths are consistent
 		# throughout the tree.
@@ -797,7 +806,7 @@ sub _touch_directory {
 
 	foreach my $dir_path ($self->_get_container_paths($path, $revision)) {
 
-		warn "touchdir: $dir_path $revision\n" if $self->verbose();
+		$log->trace("touchdir: $dir_path $revision");
 
 		my $sth_query = $self->dbh()->prepare_cached("
 			SELECT op_last, rev_first
@@ -820,7 +829,7 @@ sub _touch_directory {
 			"more than one active row for $path r$revision"
 		);
 
-		warn "UPDATE $dir_path $rev_first -> $revision\n" if $self->verbose();
+		$log->trace("UPDATE $dir_path $rev_first -> $revision");
 
 		my $sth_update = $self->dbh()->prepare_cached("
 			UPDATE dir
@@ -897,7 +906,7 @@ sub _get_tree_paths {
 
 	my @found_paths;
 	while ($sth->fetch()) {
-		warn "... $path = $found_path ($found_rev)\n" if $self->verbose();
+		$log->trace("... $path = $found_path ($found_rev)");
 		push @found_paths, $found_path;
 	}
 

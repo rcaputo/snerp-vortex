@@ -10,6 +10,7 @@ use File::Path;
 use Cwd;
 use Carp qw(confess);
 use Digest::MD5 qw(md5_hex);
+use Log::Any qw($log);
 
 use SVN::Dump::Arborist;
 
@@ -77,12 +78,12 @@ sub on_revision_done {
 		my $operation    = $change->operation();
 		my $dst_analysis = $change->analysis();
 
-		$self->log("REP) doing: $operation ", $change->path());
-		$self->log(
+		$log->trace("REP) doing: $operation ", $change->path());
+		$log->trace(
 			"REP) entity: ", $dst_analysis->ent_type(),
 			" ", $dst_analysis->ent_name()
 		);
-		$self->log(
+		$log->trace(
 			"REP) status: ", ($dst_analysis->is_entity() ? "is" : "is not"),
 			" entity"
 		);
@@ -107,7 +108,7 @@ sub on_revision_done {
 
 		# Change to a non-container is easy.
 		my $method = "on_$operation";
-		$self->log("REP) calling method $method");
+		$log->trace("REP) calling method $method");
 		$self->$method($change, $revision);
 	}
 }
@@ -115,7 +116,7 @@ sub on_revision_done {
 sub on_revision {
 	my ($self, $revision, $author, $date, $log_message) = @_;
 
-	$self->log("r$revision by $author at $date");
+	$log->trace("r$revision by $author at $date");
 
 	$log_message = "(none)" unless (
 		defined($log_message) and length($log_message)
@@ -199,14 +200,14 @@ sub calculate_depot_info {
 
 sub do_or_die {
   my $self = shift;
-	$self->log("RUN) @_");
+	$log->trace("RUN) @_");
   system @_ and confess "system(@_) = ", ($? >> 8);
   return;
 }
 
 sub pipe_into_or_die {
 	my ($self, $data, $cmd) = @_;
-	$self->log("PIN) $cmd");
+	$log->trace("PIN) $cmd");
 	open my $fh, "|-", $cmd or confess $!;
 	print $fh $data or confess $!;
 	close $fh or confess $!;
@@ -215,7 +216,7 @@ sub pipe_into_or_die {
 
 sub pipe_out_of_or_die {
 	my ($self, $cmd) = @_;
-	$self->log("POU) $cmd");
+	$log->trace("POU) $cmd");
 	open my $fh, "-|", $cmd or confess $!;
 	local $/;
 	my $data = <$fh>;
@@ -226,20 +227,20 @@ sub pipe_out_of_or_die {
 # Returns true if success.
 sub do_sans_die {
   my $self = shift;
-	$self->log("RUN) @_");
+	$log->trace("RUN) @_");
   return !(system @_);
 }
 
 sub do_mkdir {
 	my ($self, $directory) = @_;
-	$self->log("RUN) mkdir $directory");
+	$log->trace("RUN) mkdir $directory");
 	mkdir $directory or confess "mkdir $directory failed: $!";
 	return;
 }
 
 sub do_rmdir {
 	my ($self, $directory) = @_;
-	$self->log("RUN) rmtree $directory");
+	$log->trace("RUN) rmtree $directory");
 	rmtree $directory or confess "rmtree $directory failed: $!";
 	return;
 }
@@ -248,7 +249,7 @@ sub push_dir {
   my ($self, $new_dir) = @_;
 
   push @{$self->directory_stack()}, cwd();
-	$self->log("pushdir $new_dir");
+	$log->trace("pushdir $new_dir");
   chdir($new_dir) or confess "chdir $new_dir failed: $!";
 
   return;
@@ -257,21 +258,15 @@ sub push_dir {
 sub pop_dir {
   my $self = shift;
   my $old_dir = pop @{$self->directory_stack()};
-	$self->log("popdir $old_dir");
+	$log->trace("popdir $old_dir");
   chdir($old_dir) or confess "popdir failed: $!";
   return;
 }
 
 sub copy_file_or_die {
 	my ($self, $src, $dst) = @_;
-	$self->log("copy $src $dst");
+	$log->trace("copy $src $dst");
 	copy($src, $dst) or confess "cp $src $dst failed: $!";
-}
-
-sub log {
-	my $self = shift;
-	return unless $self->verbose();
-	print time() - $^T, " ", join("", @_), "\n";
 }
 
 sub rewrite_file {
@@ -289,12 +284,12 @@ sub rewrite_file {
     local $/;
     my $current_text = <$fh>;
     if ($current_text eq $change->content()) {
-			$self->log("skipping rewrite - file didn't change");
+			$log->trace("skipping rewrite - file didn't change");
 			return;
     }
   }
 
-	$self->log("changing file $full_path");
+	$log->trace("changing file $full_path");
 	$self->write_change_data($change, $full_path);
 
 	return 1;
@@ -305,7 +300,7 @@ sub write_new_file {
 
 	confess "create $full_path failed: file already exists" if -e $full_path;
 
-	$self->log("creating file $full_path");
+	$log->trace("creating file $full_path");
 
 	$self->write_change_data($change, $full_path);
 }
@@ -325,7 +320,7 @@ sub do_file_deletion {
 	confess "delete $full_path failed: file doesn't exist" unless -e $full_path;
 	confess "delete $full_path failed: path not to a file" unless -f $full_path;
 
-	$self->log("RUN) rm $full_path");
+	$log->trace("RUN) rm $full_path");
 
 	unlink $full_path or confess "unlink $full_path failed: $!";
 }

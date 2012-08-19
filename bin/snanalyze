@@ -10,6 +10,9 @@ use lib qw(./lib);
 use Getopt::Long;
 use SVN::Dump::Analyzer;
 
+use Log::Any::Adapter;
+use POSIX qw(strftime);
+
 my ($dump_file_name, $db_file_name);
 my ($verbose, $help) = (0, 0);
 
@@ -48,6 +51,16 @@ die "$0: --db=FILENAME required\n" unless (
 );
 
 die "$0: --db path ($db_file_name) must not exist\n" if -e $db_file_name;
+
+Log::Any::Adapter->set(
+	'ScreenColoredLevel',
+	min_level => ($verbose ? 'trace' : 'warning'),
+	formatter => sub {
+		my ($file, $line) = (caller(1))[1,2];
+		$file =~ s!.*/!!;
+		strftime('%F %T', localtime()) . " - $file:$line - $_[1]";
+	},
+);
 
 # Analyze the SVN dump.
 
