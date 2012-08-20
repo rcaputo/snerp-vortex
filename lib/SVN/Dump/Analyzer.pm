@@ -44,7 +44,7 @@ sub on_node_add {
 
 sub on_node_change {
 	my ($self, $revision, $path, $kind, $data) = @_;
-	$log->trace("ANL) r$revision edit $kind $path");
+	$log->trace("r$revision edit $kind $path");
 	$self->analysis()->consider_change($path, $revision, $kind);
 }
 
@@ -56,14 +56,14 @@ sub on_node_change {
 # and addition in the same revision is confusing.
 sub on_node_replace {
 	my ($self, $revision, $path, $kind, $data) = @_;
-	$log->trace("ANL) r$revision replace $kind $path");
+	$log->trace("r$revision replace $kind $path");
 	$self->analysis()->consider_delete($path, $revision);
 	$self->analysis()->consider_add($path, $revision, $kind);
 }
 
 sub on_node_copy {
 	my ($self, $dst_rev, $dst_path, $kind, $src_rev, $src_path, $text) = @_;
-	$log->trace("ANL) r$dst_rev copy $kind $dst_path from $src_path r$src_rev");
+	$log->trace("r$dst_rev copy $kind $dst_path from $src_path at r$src_rev");
 	$self->analysis()->consider_copy(
 		$dst_path, $dst_rev, $kind, $src_path, $src_rev,
 	);
@@ -71,7 +71,7 @@ sub on_node_copy {
 
 sub on_node_delete {
 	my ($self, $revision, $path) = @_;
-	$log->trace("ANL) r$revision delete $path");
+	$log->trace("r$revision delete $path");
 	$self->analysis()->consider_delete($path, $revision);
 }
 
@@ -82,6 +82,8 @@ sub on_walk_done {
 
 sub on_walk_begin {
 	my $self = shift;
+
+	$log->trace("r0 add dir /");
 
 	# The repository needs a root directory.
 	$self->analysis()->consider_add("", 0, "dir");

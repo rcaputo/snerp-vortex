@@ -129,7 +129,8 @@ sub reset {
 sub consider_add {
 	my ($self, $path, $revision, $kind) = @_;
 
-	$log->trace("add: $path $revision");
+	my $display_path = length($path) ? $path : '/';
+	$log->trace("  r$revision add $kind $display_path");
 
 	# Touch the parent directory of the thing being added.
 	$self->_touch_parent_directory($path, $revision);
@@ -154,7 +155,6 @@ sub consider_add {
 		)
 	") or die $self->dbh()->errstr();
 
-	$log->trace("INSERT $path r$revision");
 	$sth->execute($path, $revision, $revision, "add", "add", 1, 1, 0, 0) or die (
 		$sth->errstr()
 	);
@@ -164,12 +164,15 @@ sub consider_add {
 
 sub consider_change {
 	my ($self, $path, $revision, $kind) = @_;
+	$log->trace("  r$revision change $kind $path");
 	return $self->_touch_parent_directory($path, $revision) if $kind ne "dir";
 	return $self->_touch_directory($path, $revision);
 }
 
 sub consider_copy {
 	my ($self, $dst_path, $dst_rev, $kind, $src_path, $src_rev) = @_;
+
+	$log->trace("  r$dst_rev copy $kind $dst_path from $src_path at r$src_rev");
 
 	my $sth_copy = $self->dbh()->prepare_cached("
 		INSERT INTO copy (src_path, src_rev, kind, dst_path, dst_rev)
@@ -191,8 +194,6 @@ sub consider_copy {
 	# If this is a file, we're done.
 	return if $kind ne "dir";
 
-	$log->trace("copy: $src_path $src_rev > $dst_path $dst_rev");
-
 	# Copy the source path and all the entire tree below.
 	foreach my $path_to_copy ($self->_get_tree_paths($src_path, $src_rev)) {
 		my $relocated_path = $path_to_copy;
@@ -200,7 +201,7 @@ sub consider_copy {
 			"can't relocate $path_to_copy from $src_path to $dst_path"
 		);
 
-		$log->trace("copy includes: $path_to_copy > $relocated_path");
+		$log->trace("    copy includes: $relocated_path from $path_to_copy");
 
 		my $sth = $self->dbh()->prepare_cached("
 			INSERT INTO dir (
@@ -230,6 +231,8 @@ sub consider_copy {
 sub consider_delete {
 	my ($self, $path, $revision) = @_;
 
+	$log->trace("  r$revision delete $path");
+
 	# Touch the parent directory and all its ancestors back to the root.
 	$self->_touch_parent_directory($path, $revision);
 
@@ -244,8 +247,6 @@ sub consider_delete {
 		confess "deleting nonexistent $path_to_delete at r$revision" unless (
 			$self->_path_exists($path_to_delete, $revision)
 		);
-
-		$log->trace("UPDATE $path $revision (is_active=0)");
 
 		my $sth = $self->dbh()->prepare_cached("
 			UPDATE dir SET rev_last = ?, op_last = ?, is_active = ?
@@ -574,7 +575,7 @@ sub get_tree {
 		) or die $sth_node->errstr();
 
 		$sth_node->fetch() or die $sth_node->errstr();
-		$sth_node->fetch() and die "more than one node for $path r$rev";
+		$sth_node->fetch() and die "more than one node for $path at r$rev";
 
 		# Traverse to the new node.
 
@@ -583,12 +584,12 @@ sub get_tree {
 		my $final = pop(@segments);
 		foreach (@segments) {
 			$iter = $iter->children()->{$_} or die(
-				"segment $_ from $path r$rev not found"
+				"segment $_ from $path at r$rev not found"
 			);
 		}
 
 		if (defined $final) {
-			die "duplicate segment $final in $path r$rev" if exists(
+			die "duplicate segment $final in $path at r$rev" if exists(
 				$iter->children()->{$final}
 			);
 
@@ -806,7 +807,8 @@ sub _touch_directory {
 
 	foreach my $dir_path ($self->_get_container_paths($path, $revision)) {
 
-		$log->trace("touchdir: $dir_path $revision");
+		my $display_path = length($dir_path) ? $dir_path : '/';
+		$log->trace("    r$revision touching directory $display_path");
 
 		my $sth_query = $self->dbh()->prepare_cached("
 			SELECT op_last, rev_first
@@ -826,10 +828,8 @@ sub _touch_directory {
 
 		$sth_query->fetch() or die $sth_query->errstr();
 		$sth_query->fetch() and die(
-			"more than one active row for $path r$revision"
+			"more than one active row for $path at r$revision"
 		);
-
-		$log->trace("UPDATE $dir_path $rev_first -> $revision");
 
 		my $sth_update = $self->dbh()->prepare_cached("
 			UPDATE dir
@@ -882,8 +882,8 @@ sub _path_exists {
 	$sth->bind_columns(\$exists) or die $sth->errstr();
 
 	$sth->fetch();
-die "$path r$revision exists more than once" if $exists > 1;
-	$sth->fetch() and die "more than one active row for $path r$revision";
+die "$path at r$revision exists more than once" if $exists > 1;
+	$sth->fetch() and die "more than one active row for $path at r$revision";
 
 	return $exists;
 }
@@ -906,7 +906,7 @@ sub _get_tree_paths {
 
 	my @found_paths;
 	while ($sth->fetch()) {
-		$log->trace("... $path = $found_path ($found_rev)");
+		$log->trace("  ... $path = $found_path (r$found_rev)");
 		push @found_paths, $found_path;
 	}
 

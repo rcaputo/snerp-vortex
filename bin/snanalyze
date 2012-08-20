@@ -58,7 +58,10 @@ Log::Any::Adapter->set(
 	formatter => sub {
 		my ($file, $line) = (caller(1))[1,2];
 		$file =~ s!.*/!!;
-		strftime('%F %T', localtime()) . " - $file:$line - $_[1]";
+		sprintf(
+			"%s - %5d %s - %s",
+			strftime('%F %T', localtime()), $line, $file, $_[1]
+		);
 	},
 );
 
